@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DEPTH — Cold War Submarine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:hidden;}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ═══════════════════════════════════════════════════════
+// DEPTH — Cold War Submarine Survival
+// ═══════════════════════════════════════════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 640, H = 480;
+canvas.width = W; canvas.height = H;
+ctx.imageSmoothingEnabled = false;
+
+// ── PALETTE ─────────────────────────────────────────────
+const P = {
+  black:   '#050a05',
+  hull:    '#1a2018',
+  hullDk:  '#0e1410',
+  steel:   '#2a3528',
+  rivet:   '#3a4838',
+  green:   '#39ff14',
+  greenDk: '#1a7a08',
+  greenDm: '#0a3a04',
+  amber:   '#ff8c00',
+  amberDk: '#7a3a00',
+  red:     '#cc2200',
+  redBrt:  '#ff3300',
+  blue:    '#004488',
+  water:   '#001830',
+  rust:    '#5a2a10',
+  text:    '#88cc88',
+  textBrt: '#aaffaa',
+  dim:     '#334433',
+  white:   '#ccddcc',
+  yellow:  '#cccc00',
+};
+
+// ── STATE ────────────────────────────────────────────────
+let state = 'intro'; // intro|playing|dead|win
+let frameCount = 0;
+let introTimer = 0;
+
+// Sub systems
+let depth = 0;        // metres, increases over time
+let maxDepth = 800;   // survive to this depth = win
+let hull = 100;       // 0 = sunk
+let oxygen = 100;     // 0 = dead
+let fuel = 100;       // 0 = dead stop
+let floodLevel = 0;   // 0-100, slows player, drains O2
+let score = 0;
+let missionTime = 0;
+
+// Rates (per second at surface, worsen with depth)
+const BASE_O2_DRAIN    = 0.8;
+const BASE_FUEL_DRAIN  = 0.5;
+const BASE_DEPTH_RATE  = 0.4; // m/s descent
+
+// Breach events
+let breaches = [];      // hull holes
+let nextBreachTime = 0;
+
+// Notes log
+let sonarPings = [];    // { x, y, type, logged }
+let logEntries = [];
+let nextPingTime = 0;
+
+// ── INPUT ────────────────────────────────────────────────
+const keys = {};
+const mouse = { x: 0, y: 0, down: false, clicked: false };
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === 'Enter' && state === 'intro') state = 'playing';
+  if (e.key === 'Enter' && (state === 'dead' || state === 'win')) initGame();
+  e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = (e.clientX - r.left) * (W / r.width);
+  mouse.y = (e.clientY - r.top) * (H / r.height);
+});
+canvas.addEventListener('mousedown', () => { mouse.down = true; mouse.clicked = true; });
+canvas.addEventListener('mouseup',   () => { mouse.down = false; });
+
+// ── SUB LAYOUT ───────────────────────────────────────────
+// Interior rooms from left to right inside the sub
+const SUB_X = 60, SUB_Y = 160, SUB_W = 520, SUB_H = 160;
+const FLOOR_Y = SUB_Y + SUB_H - 40; // player walks on this
+
+const STATIONS = [
+  { id:'hull',    name:'HULL REPAIR',   x: SUB_X + 40,  icon:'⚙', key:'1' },
+  { id:'steer',   name:'HELM',          x: SUB_X + 140, icon:'◎', key:'2' },
+  { id:'oxygen',  name:'O² TANKS',      x: SUB_X + 250, icon:'◈', key:'3' },
+  { id:'fuel',    name:'ENGINE',        x: SUB_X + 360, icon:'⛽', key:'4' },
+  { id:'notes',   name:'SONAR/LOG',     x: SUB_X + 460, icon:'◉', key:'5' },
+];
+
+// ── PLAYER ───────────────────────────────────────────────
+let player = {
+  x: SUB_X + 250, y: FLOOR_Y - 16,
+  w: 10, h: 16,
+  speed: 2.2,
+  atStation: null,
+  walkCycle: 0,
+  facing: 1, // 1=right, -1=left
+};
+
+function nearStation() {
+  for (const s of STATIONS) {
+    if (Math.abs(player.x - s.x) < 30) return s;
+  }
+  return null;
+}
+
+// ── MINIGAME STATE ───────────────────────────────────────
+let activeStation = null; // which minigame is open
+
+// 1. HULL REPAIR — click holes to weld
+let hullHoles = []; // { x, y, r, size, leakRate, progress }
+let weldProgress = 0;
+let weldTarget = null;
+
+// 2. STEERING — avoid obstacles
+let steerY = 240;       // player sub position
+let steerVY = 0;
+let obstacles = [];     // { x, y, w, h, type }
+let steerScrollX = 0;
+let steerDamage = 0;    // 0-100 this session
+let steerWarning = 0;
+
+// 3. OXYGEN — valve puzzle
+let valveState = [false, false, false, false, false]; // 5 valves
+let valveTarget = [];  // correct order
+let valveStep = 0;     // next valve index to hit
+let valvePressure = 100; // counts down, reset on success
+let valveSuccess = 0;  // flash timer
+
+// 4. FUEL — pump rhythm
+let pumpAngle = 0;
+let pumpTarget = 0;    // rotating target zone
+let pumpTargetWidth = 0.4;
+let pumpHits = 0;
+let pumpMisses = 0;
+let pumpFlash = 0;
+let pumpFail = 0;
+
+// 5. NOTES — sonar log
+let sonarSweep = 0;    // rotating sweep line angle
+let detectedBlips = [];
+let pendingLog = null;
+let logSuccess = 0;
+let logInput = '';
+
+// ── WORLD ────────────────────────────────────────────────
+// Background ocean particles
+let bubbles = [];
+for (let i = 0; i < 30; i++) {
+  bubbles.push({ x: Math.random()*W, y: Math.random()*H,
+    vy: -(0.3+Math.random()*0.8), r: 1+Math.random()*3, alpha: Math.random() });
+}
+
+// ── INIT ─────────────────────────────────────────────────
+function initGame() {
+  depth = 0; hull = 100; oxygen = 100; fuel = 100;
+  floodLevel = 0; score = 0; missionTime = 0;
+  breaches = []; sonarPings = []; logEntries = [];
+  hullHoles = []; weldTarget = null;
+  obstacles = []; steerY = 240; steerVY = 0; steerDamage = 0;
+  valveState = [false,false,false,false,false];
+  valveStep = 0; valvePressure = 100; valveSuccess = 0;
+  generateValveTarget();
+  pumpAngle = 0; pumpHits = 0; pumpMisses = 0;
+  detectedBlips = []; pendingLog = null; logInput = '';
+  activeStation = null;
+  player.x = SUB_X + 250; player.atStation = null;
+  nextBreachTime = 300 + Math.floor(Math.random()*200);
+  nextPingTime = 180;
+  state = 'playing';
+}
+
+function generateValveTarget() {
+  valveTarget = [0,1,2,3,4].sort(() => Math.random()-.5).slice(0,4);
+  valveStep = 0;
+  valveState = [false,false,false,false,false];
+}
+
+// ── DEPTH SCALING ────────────────────────────────────────
+function depthFactor() { return 1 + (depth / maxDepth) * 2.5; }
+
+// ── UPDATE ───────────────────────────────────────────────
+function update() {
+  frameCount++;
+  if (state !== 'playing') return;
+  missionTime++;
+
+  const dt = 1/60;
+  const df = depthFactor();
+
+  // Descend
+  depth = Math.min(maxDepth, depth + BASE_DEPTH_RATE * df * dt * 60 * 0.016);
+
+  // Drain systems
+  const floodPenalty = 1 + floodLevel * 0.02;
+  oxygen -= BASE_O2_DRAIN * df * floodPenalty * dt;
+  fuel   -= BASE_FUEL_DRAIN * df * dt;
+
+  // Flood from hull breaches
+  const totalLeak = breaches.reduce((s, b) => s + b.size, 0);
+  floodLevel = Math.min(100, floodLevel + totalLeak * dt * 2);
+  floodLevel = Math.max(0, floodLevel - 0.02); // slow drain if sealed
+
+  // Apply flood to player speed
+  player.speed = 2.2 * (1 - floodLevel * 0.007);
+
+  // Hull damage from flooding
+  if (floodLevel > 50) hull -= (floodLevel - 50) * 0.01 * dt * 60;
+
+  // Spawn breaches
+  nextBreachTime--;
+  if (nextBreachTime <= 0) {
+    const bw = 20 + Math.floor(Math.random() * 30);
+    const bh = 15 + Math.floor(Math.random() * 15);
+    breaches.push({
+      wx: SUB_X + 30 + Math.random() * (SUB_W - 60),
+      wy: SUB_Y + 20 + Math.random() * (SUB_H - 60),
+      w: bw, h: bh,
+      size: 0.3 + Math.random() * 0.8 * (df * 0.5),
+      progress: 0,
+    });
+    nextBreachTime = Math.floor((200 + Math.random()*200) / df);
+  }
+
+  // Spawn sonar pings
+  nextPingTime--;
+  if (nextPingTime <= 0) {
+    const types = ['rock','creature','thermal','debris'];
+    sonarPings.push({
+      angle: Math.random()*Math.PI*2,
+      dist: 20 + Math.random()*110,
+      type: types[Math.floor(Math.random()*types.length)],
+      logged: false, age: 0, maxAge: 600,
+    });
+    nextPingTime = 180 + Math.floor(Math.random()*240);
+  }
+  sonarPings.forEach(p => p.age++);
+  sonarPings = sonarPings.filter(p => p.age < p.maxAge);
+
+  // Win / lose
+  if (oxygen <= 0 || hull <= 0 || fuel <= 0) {
+    state = 'dead';
+    return;
+  }
+  if (depth >= maxDepth) {
+    state = 'win';
+    return;
+  }
+
+  // ── PLAYER MOVEMENT ─────────────────────────────────────
+  if (!activeStation) {
+    if (keys['a'] || keys['arrowleft'])  { player.x -= player.speed; player.facing = -1; player.walkCycle += 0.25; }
+    if (keys['d'] || keys['arrowright']) { player.x += player.speed; player.facing = 1;  player.walkCycle += 0.25; }
+    player.x = Math.max(SUB_X + 10, Math.min(SUB_X + SUB_W - 10, player.x));
+    player.y = FLOOR_Y - player.h;
+
+    // Open station
+    if (keys['e'] || keys[' ']) {
+      const near = nearStation();
+      if (near) openStation(near.id);
+    }
+    if (keys['escape']) closeStation();
+  } else {
+    if (keys['escape']) closeStation();
+    updateMinigame(activeStation);
+  }
+
+  // ── BUBBLES ─────────────────────────────────────────────
+  bubbles.forEach(b => {
+    b.y += b.vy; b.x += Math.sin(frameCount * 0.02 + b.y) * 0.3;
+    if (b.y < -5) { b.y = H + 5; b.x = Math.random() * W; }
+  });
+
+  // Score from depth + logs
+  score = Math.floor(depth * 10 + logEntries.length * 50);
+}
+
+function openStation(id) {
+  activeStation = id;
+  if (id === 'steer') {
+    steerY = 240; steerVY = 0; steerScrollX = 0;
+    obstacles = [];
+  }
+}
+
+function closeStation() {
+  activeStation = null;
+  weldTarget = null;
+}
+
+// ─── MINIGAME UPDATES ────────────────────────────────────
+
+function updateMinigame(id) {
+  if (id === 'hull')   updateHullRepair();
+  if (id === 'steer')  updateSteering();
+  if (id === 'oxygen') updateOxygen();
+  if (id === 'fuel')   updateFuel();
+  if (id === 'notes')  updateNotes();
+}
+
+// 1. HULL REPAIR
+function updateHullRepair() {
+  // hullHoles are drawn in the sub cross-section view
+  // Click + hold on a breach to weld it
+  hullHoles = breaches; // sync
+  if (mouse.down && weldTarget !== null) {
+    const b = breaches[weldTarget];
+    if (b) {
+      b.progress += 0.008;
+      if (b.progress >= 1) {
+        breaches.splice(weldTarget, 1);
+        weldTarget = null;
+        floodLevel = Math.max(0, floodLevel - 15);
+        hull = Math.min(100, hull + 5);
+      }
+    }
+  } else {
+    weldTarget = null;
+  }
+  if (mouse.clicked) {
+    // Find clicked breach
+    for (let i = 0; i < breaches.length; i++) {
+      const b = breaches[i];
+      const bx = mapToMiniX(b.wx), by = mapToMiniY(b.wy);
+      if (mouse.x > bx-10 && mouse.x < bx+b.w+10 && mouse.y > by-10 && mouse.y < by+b.h+10) {
+        weldTarget = i; break;
+      }
+    }
+  }
+}
+
+// 2. STEERING
+function updateSteering() {
+  steerScrollX += 2 + depth / 200;
+  // Spawn obstacles
+  if (frameCount % Math.max(20, 60 - Math.floor(depth/15)) === 0) {
+    const types = ['rock','rock','rock','thermal','debris'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    const h2 = 30 + Math.random()*80;
+    const y2 = 80 + Math.random()*(200-h2);
+    obstacles.push({ x: W + 60, y: y2, w: 20+Math.random()*30, h: h2, type: t, scrollX: steerScrollX });
+  }
+  obstacles = obstacles.filter(o => (steerScrollX - o.scrollX) < W + 100);
+
+  // Steering input
+  if (keys['w'] || keys['arrowup'])   steerVY -= 0.35;
+  if (keys['s'] || keys['arrowdown']) steerVY += 0.35;
+  steerVY *= 0.88;
+  steerY += steerVY;
+  steerY = Math.max(100, Math.min(340, steerY));
+
+  // Collision
+  steerWarning = 0;
+  for (const o of obstacles) {
+    const ox = W/2 - (steerScrollX - o.scrollX) + o.x - W;
+    const inX = ox < 80 && ox + o.w > 50;
+    const inY = steerY-12 < o.y+o.h && steerY+12 > o.y;
+    if (inX && Math.abs(ox - 60) < 120) steerWarning = 1;
+    if (inX && inY) {
+      steerDamage += 1;
+      hull -= 0.3;
+      floodLevel = Math.min(100, floodLevel + 0.5);
+    }
+  }
+}
+
+// 3. OXYGEN VALVES
+function updateOxygen() {
+  valvePressure -= 0.08 * depthFactor();
+  if (valvePressure <= 0) {
+    // Pressure burst — reset
+    valvePressure = 100;
+    generateValveTarget();
+    oxygen -= 10;
+  }
+  if (valveSuccess > 0) valveSuccess--;
+}
+
+// 4. FUEL PUMP
+function updateFuel() {
+  pumpAngle = (pumpAngle + 0.04 + depth * 0.00008) % (Math.PI * 2);
+  pumpTarget = (pumpTarget + 0.018) % (Math.PI * 2);
+  if (pumpFlash > 0) pumpFlash--;
+  if (pumpFail > 0) pumpFail--;
+}
+
+// 5. SONAR LOG
+function updateNotes() {
+  sonarSweep = (sonarSweep + 0.012) % (Math.PI * 2);
+  if (logSuccess > 0) logSuccess--;
+  // Detect pings near sweep
+  sonarPings.forEach(p => {
+    const diff = Math.abs(normalizeAngle(p.angle - sonarSweep));
+    if (diff < 0.15 && !p.detected) { p.detected = true; detectedBlips.push({ ...p, flash: 60 }); }
+  });
+  detectedBlips.forEach(b => { if (b.flash > 0) b.flash--; });
+}
+
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= Math.PI*2;
+  while (a < -Math.PI) a += Math.PI*2;
+  return a;
+}
+
+// ── DRAW ─────────────────────────────────────────────────
+function draw() {
+  ctx.fillStyle = P.black;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state === 'intro') { drawIntro(); return; }
+  if (state === 'dead')  { drawDeadScreen(); return; }
+  if (state === 'win')   { drawWinScreen(); return; }
+
+  // Ocean background
+  drawOcean();
+
+  // Sub exterior + interior
+  drawSub();
+
+  // HUD
+  drawHUD();
+
+  // Active minigame overlay
+  if (activeStation) drawMinigame(activeStation);
+  else drawStationPrompts();
+
+  // Flood overlay
+  if (floodLevel > 0) {
+    ctx.save();
+    ctx.globalAlpha = floodLevel * 0.004;
+    ctx.fillStyle = P.water;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    // Water ripple lines at bottom
+    const wy = H - (floodLevel / 100) * 80;
+    ctx.save();
+    ctx.globalAlpha = floodLevel * 0.006;
+    ctx.fillStyle = '#002244';
+    ctx.fillRect(0, wy, W, H - wy);
+    ctx.restore();
+  }
+
+  mouse.clicked = false;
+}
+
+// ── OCEAN ────────────────────────────────────────────────
+function drawOcean() {
+  // Deep gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  const d = depth / maxDepth;
+  grad.addColorStop(0, `rgba(0,${Math.floor(20*(1-d))},${Math.floor(40*(1-d))},1)`);
+  grad.addColorStop(1, `rgba(0,0,0,1)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Depth particles / particulate
+  ctx.fillStyle = `rgba(100,150,200,0.04)`;
+  for (let i = 0; i < 60; i++) {
+    const px = (i * 137 + frameCount * 0.3) % W;
+    const py = (i * 79 + frameCount * 0.15) % H;
+    ctx.fillRect(px, py, 1, 1);
+  }
+
+  // Bubbles
+  bubbles.forEach(b => {
+    ctx.save();
+    ctx.globalAlpha = b.alpha * 0.4;
+    ctx.strokeStyle = '#4488aa';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // Depth display
+  ctx.fillStyle = P.greenDk;
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`DEPTH: ${Math.floor(depth)}m / ${maxDepth}m`, W - 8, H - 8);
+}
+
+// ── SUB INTERIOR ─────────────────────────────────────────
+function drawSub() {
+  // Sub outer hull
+  ctx.fillStyle = P.hullDk;
+  roundRect(SUB_X - 20, SUB_Y - 10, SUB_W + 40, SUB_H + 20, 18);
+  ctx.fillStyle = P.hull;
+  roundRect(SUB_X, SUB_Y, SUB_W, SUB_H, 12);
+
+  // Hull rivet lines
+  ctx.strokeStyle = P.rivet;
+  ctx.lineWidth = 1;
+  for (let rx = SUB_X + 20; rx < SUB_X + SUB_W; rx += 40) {
+    ctx.beginPath(); ctx.moveTo(rx, SUB_Y); ctx.lineTo(rx, SUB_Y + SUB_H); ctx.stroke();
+  }
+  // Rivets
+  ctx.fillStyle = P.rivet;
+  for (let rx = SUB_X + 20; rx < SUB_X + SUB_W; rx += 40) {
+    for (let ry = SUB_Y + 8; ry < SUB_Y + SUB_H; ry += SUB_H - 16) {
+      ctx.beginPath(); ctx.arc(rx, ry, 2, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Floor line
+  ctx.strokeStyle = P.steel;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(SUB_X, FLOOR_Y);
+  ctx.lineTo(SUB_X + SUB_W, FLOOR_Y);
+  ctx.stroke();
+
+  // Flood water inside sub
+  if (floodLevel > 5) {
+    const fw = floodLevel / 100;
+    const fy = FLOOR_Y - (SUB_Y + SUB_H - FLOOR_Y) * fw * 3;
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#001830';
+    ctx.fillRect(SUB_X, Math.max(SUB_Y, fy), SUB_W, SUB_Y + SUB_H - Math.max(SUB_Y, fy));
+    // Water surface ripple
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#004466';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let wx = SUB_X; wx < SUB_X + SUB_W; wx += 8) {
+      const wy2 = Math.max(SUB_Y, fy) + Math.sin(frameCount * 0.08 + wx * 0.1) * 2;
+      if (wx === SUB_X) ctx.moveTo(wx, wy2); else ctx.lineTo(wx, wy2);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw breaches (cracks in hull)
+  breaches.forEach((b, i) => {
+    if (i === weldTarget) {
+      // Welding flash
+      ctx.fillStyle = `rgba(255,180,0,${0.3 + Math.sin(frameCount*0.5)*0.2})`;
+    } else {
+      ctx.fillStyle = P.rust;
+    }
+    ctx.fillRect(b.wx - SUB_X + SUB_X, b.wy, b.w, b.h);
+    // Crack lines
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(b.wx, b.wy);
+    ctx.lineTo(b.wx + b.w*0.4, b.wy + b.h*0.6);
+    ctx.lineTo(b.wx + b.w, b.wy + b.h);
+    ctx.stroke();
+    // Water drip
+    if (frameCount % 8 < 4) {
+      ctx.fillStyle = '#003355';
+      ctx.fillRect(b.wx + b.w/2, b.wy + b.h, 2, 4 + (frameCount%16));
+    }
+    // Progress bar if being welded
+    if (i === weldTarget && b.progress > 0) {
+      ctx.fillStyle = '#222';
+      ctx.fillRect(b.wx, b.wy - 6, b.w, 4);
+      ctx.fillStyle = '#ffaa00';
+      ctx.fillRect(b.wx, b.wy - 6, b.w * b.progress, 4);
+    }
+  });
+
+  // Draw stations
+  STATIONS.forEach(s => {
+    const near = nearStation();
+    const isNear = near && near.id === s.id;
+    ctx.fillStyle = isNear ? P.greenDk : P.steel;
+    ctx.fillRect(s.x - 18, SUB_Y + 10, 36, 100);
+    ctx.strokeStyle = isNear ? P.green : P.rivet;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(s.x - 18, SUB_Y + 10, 36, 100);
+    // Screen glow
+    ctx.fillStyle = isNear ? P.greenDm : '#0a0e0a';
+    ctx.fillRect(s.x - 12, SUB_Y + 16, 24, 30);
+    // Icon
+    ctx.fillStyle = isNear ? P.green : P.dim;
+    ctx.font = '14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(s.icon, s.x, SUB_Y + 38);
+    // Label
+    ctx.fillStyle = isNear ? P.textBrt : P.text;
+    ctx.font = '5px monospace';
+    ctx.fillText(s.name, s.x, SUB_Y + 98);
+    if (isNear) {
+      ctx.fillStyle = P.green;
+      ctx.font = '6px monospace';
+      ctx.fillText('[E]', s.x, SUB_Y + 108);
+    }
+  });
+
+  // Draw player
+  drawPlayer();
+}
+
+function drawPlayer() {
+  const px = player.x, py = player.y;
+  const f = player.facing;
+  const bob = Math.sin(player.walkCycle) * 1.5;
+
+  ctx.save();
+  ctx.translate(px, py + bob);
+  ctx.scale(f, 1);
+
+  // Body — naval uniform
+  ctx.fillStyle = '#1a2a3a';
+  ctx.fillRect(-4, 0, 8, 10);
+  // Head
+  ctx.fillStyle = '#c8a070';
+  ctx.fillRect(-3, -8, 6, 7);
+  // Cap
+  ctx.fillStyle = '#0a1a2a';
+  ctx.fillRect(-4, -10, 8, 3);
+  ctx.fillRect(-5, -8, 10, 1);
+  // Legs
+  const legOff = Math.sin(player.walkCycle) * 2;
+  ctx.fillStyle = '#1a2a3a';
+  ctx.fillRect(-3, 10, 2, 6 + legOff);
+  ctx.fillRect(1, 10, 2, 6 - legOff);
+  // Boots
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(-4, 16 + legOff, 3, 2);
+  ctx.fillRect(1, 16 - legOff, 3, 2);
+
+  ctx.restore();
+}
+
+// ── HUD ───────────────────────────────────────────────────
+function drawHUD() {
+  // Top bar background
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(0, 0, W, 36);
+
+  const bars = [
+    { label:'HULL',  val:hull,       col:'#cc4400', warn:30 },
+    { label:'O²',    val:oxygen,     col:'#00aaff', warn:25 },
+    { label:'FUEL',  val:fuel,       col:'#ffaa00', warn:20 },
+    { label:'FLOOD', val:floodLevel, col:'#004488', warn:60, inv:true },
+  ];
+  bars.forEach((b, i) => {
+    const bx = 8 + i * 158, by = 6, bw = 140, bh = 10;
+    const v = Math.max(0, Math.min(100, b.val));
+    const warn = b.inv ? b.val > b.warn : b.val < b.warn;
+    // Label
+    ctx.fillStyle = warn && Math.floor(frameCount/15)%2===0 ? '#ff4400' : P.text;
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(b.label, bx, by + 8);
+    // Bar bg
+    ctx.fillStyle = '#111';
+    ctx.fillRect(bx + 34, by, bw, bh);
+    // Bar fill
+    ctx.fillStyle = warn ? '#ff3300' : b.col;
+    ctx.fillRect(bx + 34, by, bw * v/100, bh);
+    // Border
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 34, by, bw, bh);
+    // Value
+    ctx.fillStyle = '#aaa';
+    ctx.font = '6px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.floor(v)+'%', bx + 34 + bw - 2, by + 8);
+  });
+
+  // Depth bar (bottom)
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, H - 20, W, 20);
+  ctx.fillStyle = P.greenDk;
+  ctx.fillRect(0, H - 18, (depth/maxDepth) * W, 14);
+  ctx.fillStyle = P.green;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`MISSION DEPTH: ${Math.floor(depth)}m — TARGET: ${maxDepth}m`, W/2, H - 7);
+
+  // Score
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`SCR: ${score}`, W - 4, H - 22);
+
+  // Breach count warning
+  if (breaches.length > 0) {
+    const pulse = Math.floor(frameCount/10)%2===0;
+    ctx.fillStyle = pulse ? P.redBrt : P.red;
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(`⚠ ${breaches.length} BREACH${breaches.length>1?'ES':''} DETECTED`, W/2, 28);
+  }
+}
+
+// ── STATION PROMPTS ───────────────────────────────────────
+function drawStationPrompts() {
+  const near = nearStation();
+  if (!near) return;
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(W/2-80, H-55, 160, 20);
+  ctx.fillStyle = P.green;
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`[E] OPEN ${near.name}`, W/2, H-42);
+}
+
+// ── MINIGAME PANEL ────────────────────────────────────────
+function drawMinigame(id) {
+  // Dark overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(0, 40, W, H - 60);
+
+  if (id === 'hull')   drawHullMinigame();
+  if (id === 'steer')  drawSteerMinigame();
+  if (id === 'oxygen') drawOxygenMinigame();
+  if (id === 'fuel')   drawFuelMinigame();
+  if (id === 'notes')  drawNotesMinigame();
+
+  // Close hint
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('[ESC] CLOSE', W - 8, H - 22);
+}
+
+// ─────────────────────────────────────────────────────────
+// 1. HULL REPAIR MINIGAME
+// ─────────────────────────────────────────────────────────
+function mapToMiniX(wx) { return 60 + ((wx - SUB_X) / SUB_W) * (W - 120); }
+function mapToMiniY(wy) { return 80 + ((wy - SUB_Y) / SUB_H) * 200; }
+
+function drawHullMinigame() {
+  // Panel title
+  ctx.fillStyle = P.amber;
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('── HULL INTEGRITY MONITOR ──', W/2, 58);
+
+  // Sub cross-section diagram
+  ctx.strokeStyle = P.steel;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(60, 72, W-120, 210);
+  ctx.fillStyle = '#0a0e0a';
+  ctx.fillRect(61, 73, W-122, 208);
+
+  // Grid lines
+  ctx.strokeStyle = P.hullDk;
+  ctx.lineWidth = 1;
+  for (let gx = 60; gx < W-60; gx += 40) {
+    ctx.beginPath(); ctx.moveTo(gx, 72); ctx.lineTo(gx, 282); ctx.stroke();
+  }
+
+  // Section labels
+  ctx.fillStyle = P.dim;
+  ctx.font = '6px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('BOW', 64, 86);
+  ctx.textAlign = 'right';
+  ctx.fillText('STERN', W-64, 86);
+
+  // Draw breaches as red zones
+  if (breaches.length === 0) {
+    ctx.fillStyle = P.green;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('HULL INTEGRITY: NOMINAL', W/2, 180);
+  } else {
+    breaches.forEach((b, i) => {
+      const bx = mapToMiniX(b.wx);
+      const by = mapToMiniY(b.wy);
+      const bw = Math.max(20, b.w * 1.5);
+      const bh = Math.max(14, b.h);
+      const isTarget = i === weldTarget;
+
+      // Breach glow
+      ctx.save();
+      ctx.globalAlpha = isTarget ? 0.7 : 0.5;
+      ctx.fillStyle = isTarget ? '#ffaa00' : P.red;
+      ctx.shadowBlur = isTarget ? 12 : 6;
+      ctx.shadowColor = isTarget ? '#ffaa00' : P.red;
+      ctx.fillRect(bx - bw/2, by - bh/2, bw, bh);
+      ctx.restore();
+
+      // Breach label
+      ctx.fillStyle = '#fff';
+      ctx.font = '6px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`BR-${String(i+1).padStart(2,'0')}`, bx, by - bh/2 - 3);
+      ctx.fillText(`${(b.size*100).toFixed(0)}L/s`, bx, by + bh/2 + 9);
+
+      // Progress bar
+      if (b.progress > 0) {
+        ctx.fillStyle = '#333';
+        ctx.fillRect(bx - bw/2, by + bh/2 + 12, bw, 4);
+        ctx.fillStyle = '#ffaa00';
+        ctx.fillRect(bx - bw/2, by + bh/2 + 12, bw * b.progress, 4);
+      }
+    });
+  }
+
+  // Weld tool cursor hint
+  ctx.fillStyle = P.amber;
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  if (weldTarget !== null) {
+    ctx.fillText('HOLD CLICK — WELDING...', W/2, 300);
+  } else if (breaches.length > 0) {
+    ctx.fillStyle = P.text;
+    ctx.fillText('CLICK BREACH → HOLD TO WELD', W/2, 300);
+  }
+
+  // Flood level indicator
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`FLOOD: ${Math.floor(floodLevel)}%`, 68, 310);
+  ctx.fillStyle = '#002244';
+  ctx.fillRect(120, 302, 200, 8);
+  ctx.fillStyle = '#004488';
+  ctx.fillRect(120, 302, 200 * floodLevel/100, 8);
+}
+
+// ─────────────────────────────────────────────────────────
+// 2. STEERING MINIGAME
+// ─────────────────────────────────────────────────────────
+function drawSteerMinigame() {
+  ctx.fillStyle = P.amber;
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('── HELM NAVIGATION ──', W/2, 58);
+
+  // Ocean corridor view
+  const viewX = 50, viewY = 70, viewW = W - 100, viewH = 260;
+  ctx.fillStyle = '#000810';
+  ctx.fillRect(viewX, viewY, viewW, viewH);
+  ctx.strokeStyle = P.steel;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(viewX, viewY, viewW, viewH);
+
+  // Depth particles in corridor
+  ctx.fillStyle = 'rgba(60,100,160,0.05)';
+  for (let i = 0; i < 40; i++) {
+    const px = (i * 97 + frameCount * 1.5) % viewW + viewX;
+    const py = viewY + (i * 47 + frameCount * 0.5) % viewH;
+    ctx.fillRect(px, py, 1, 1);
+  }
+
+  // Draw obstacles
+  obstacles.forEach(o => {
+    const ox = viewX + viewW/2 - (steerScrollX - o.scrollX) + o.x - W;
+    if (ox > viewX - o.w && ox < viewX + viewW + o.w) {
+      const cols = { rock:'#2a2a3a', thermal:'#442200', debris:'#1a2a1a' };
+      ctx.fillStyle = cols[o.type] || '#2a2a2a';
+      ctx.fillRect(ox, viewY + o.y - viewY - 20, o.w, o.h);
+      ctx.strokeStyle = o.type==='thermal' ? '#884400' : '#333';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ox, viewY + o.y - viewY - 20, o.w, o.h);
+      if (o.type === 'thermal') {
+        ctx.fillStyle = 'rgba(200,100,0,0.15)';
+        ctx.fillRect(ox, viewY + o.y - viewY - 20, o.w, o.h);
+      }
+    }
+  });
+
+  // Player sub icon
+  const subVY = steerY - 100;
+  const subScreenY = viewY + subVY;
+  ctx.fillStyle = steerWarning ? P.amber : P.green;
+  ctx.fillRect(viewX + 40, subScreenY - 10, 40, 20);
+  ctx.fillStyle = P.steel;
+  ctx.fillRect(viewX + 40, subScreenY - 6, 40, 12);
+  // Prop
+  ctx.fillStyle = P.greenDk;
+  ctx.fillRect(viewX + 35, subScreenY - 8, 6, 16);
+  // Scope
+  ctx.fillRect(viewX + 68, subScreenY - 14, 4, 6);
+
+  // Warning flash
+  if (steerWarning) {
+    ctx.save();
+    ctx.globalAlpha = 0.3 + Math.sin(frameCount*0.4)*0.2;
+    ctx.fillStyle = P.amber;
+    ctx.fillRect(viewX, viewY, viewW, viewH);
+    ctx.restore();
+  }
+
+  // Depth indicator
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`DEPTH: ${Math.floor(depth)}m`, viewX + 4, viewY + 12);
+  ctx.fillStyle = steerDamage > 0 ? P.red : P.green;
+  ctx.textAlign = 'right';
+  ctx.fillText(`HULL: ${Math.max(0,100-steerDamage).toFixed(0)}%`, viewX + viewW - 4, viewY + 12);
+
+  // Controls
+  ctx.fillStyle = P.text;
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('W/S or ↑↓ — DIVE / SURFACE', W/2, viewY + viewH + 18);
+  ctx.fillStyle = P.dim;
+  ctx.fillText('AVOID ROCKS AND THERMAL VENTS', W/2, viewY + viewH + 30);
+}
+
+// ─────────────────────────────────────────────────────────
+// 3. OXYGEN VALVE PUZZLE
+// ─────────────────────────────────────────────────────────
+function drawOxygenMinigame() {
+  ctx.fillStyle = '#00aaff';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('── O² PRESSURE SYSTEM ──', W/2, 58);
+
+  // Pressure gauge
+  const gx = W/2, gy = 110, gr = 45;
+  ctx.strokeStyle = '#003355';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI*2); ctx.stroke();
+  const pressAngle = -Math.PI + (valvePressure/100)*Math.PI;
+  ctx.strokeStyle = valvePressure < 30 ? P.red : '#00aaff';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(gx, gy, gr, -Math.PI, pressAngle);
+  ctx.stroke();
+  ctx.fillStyle = '#00aaff';
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${Math.floor(valvePressure)}%`, gx, gy + 4);
+  ctx.fillStyle = P.dim;
+  ctx.font = '6px monospace';
+  ctx.fillText('PRESSURE', gx, gy + 14);
+
+  // Valve sequence display
+  ctx.fillStyle = P.text;
+  ctx.font = '8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('OPEN VALVES IN ORDER:', W/2, 170);
+
+  // Target sequence display
+  valveTarget.forEach((vi, si) => {
+    const vx = W/2 - (valveTarget.length-1)*35 + si*70;
+    const done = si < valveStep;
+    const isCurrent = si === valveStep;
+    ctx.strokeStyle = done ? P.green : (isCurrent ? P.amber : P.dim);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(vx - 14, 178, 28, 28);
+    ctx.fillStyle = done ? P.greenDk : '#0a0e0a';
+    ctx.fillRect(vx - 13, 179, 26, 26);
+    ctx.fillStyle = done ? P.green : (isCurrent ? P.amber : P.dim);
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText(vi + 1, vx, 196);
+    if (si < valveTarget.length - 1) {
+      ctx.fillStyle = P.dim;
+      ctx.font = '10px monospace';
+      ctx.fillText('→', vx + 28, 196);
+    }
+  });
+
+  // Draw 5 valves
+  const valveLabels = ['V-1','V-2','V-3','V-4','V-5'];
+  valveLabels.forEach((vl, i) => {
+    const vx = W/2 - 160 + i * 80;
+    const vy = 240;
+    const isOn = valveState[i];
+    const isNext = valveTarget[valveStep] === i;
+
+    // Valve body
+    ctx.fillStyle = isOn ? P.greenDk : '#111';
+    ctx.fillRect(vx - 18, vy, 36, 36);
+    ctx.strokeStyle = isNext ? P.amber : (isOn ? P.green : P.steel);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(vx - 18, vy, 36, 36);
+
+    // Valve wheel
+    ctx.strokeStyle = isOn ? P.green : P.dim;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(vx, vy+18, 12, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(vx-12, vy+18); ctx.lineTo(vx+12, vy+18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(vx, vy+6); ctx.lineTo(vx, vy+30); ctx.stroke();
+
+    // Label
+    ctx.fillStyle = isNext ? P.amber : P.dim;
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(vl, vx, vy + 48);
+
+    // Click detection
+    if (mouse.clicked) {
+      if (mouse.x > vx-18 && mouse.x < vx+18 && mouse.y > vy && mouse.y < vy+36) {
+        handleValveClick(i);
+      }
+    }
+
+    // Glow if next
+    if (isNext) {
+      ctx.save();
+      ctx.globalAlpha = 0.2 + Math.sin(frameCount*0.1)*0.1;
+      ctx.fillStyle = P.amber;
+      ctx.fillRect(vx-18, vy, 36, 36);
+      ctx.restore();
+    }
+  });
+
+  // Success flash
+  if (valveSuccess > 0) {
+    ctx.save();
+    ctx.globalAlpha = valveSuccess/30 * 0.4;
+    ctx.fillStyle = P.green;
+    ctx.fillRect(0, 40, W, H-60);
+    ctx.restore();
+    ctx.fillStyle = P.green;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('O² REPLENISHED!', W/2, 310);
+  }
+
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CLICK VALVES IN DISPLAYED ORDER — WRONG ORDER RESETS', W/2, 330);
+}
+
+function handleValveClick(i) {
+  const expected = valveTarget[valveStep];
+  if (i === expected) {
+    valveState[i] = true;
+    valveStep++;
+    if (valveStep >= valveTarget.length) {
+      // Success!
+      oxygen = Math.min(100, oxygen + 20);
+      valvePressure = 100;
+      valveSuccess = 60;
+      generateValveTarget();
+    }
+  } else {
+    // Wrong — reset
+    valveStep = 0;
+    valveState = [false,false,false,false,false];
+    valvePressure = Math.max(10, valvePressure - 20);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// 4. FUEL PUMP MINIGAME
+// ─────────────────────────────────────────────────────────
+function drawFuelMinigame() {
+  ctx.fillStyle = P.amber;
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('── ENGINE FUEL PUMP ──', W/2, 58);
+
+  // Pump dial
+  const cx = W/2, cy = 190, r = 90;
+
+  // Outer ring
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+
+  // Target zone (green arc)
+  const tw = pumpTargetWidth;
+  ctx.strokeStyle = '#00cc00';
+  ctx.lineWidth = 14;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, pumpTarget - tw/2, pumpTarget + tw/2);
+  ctx.stroke();
+
+  // Needle
+  ctx.strokeStyle = P.amber;
+  ctx.lineWidth = 3;
+  ctx.shadowBlur = 6; ctx.shadowColor = P.amber;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(pumpAngle) * r * 0.85, cy + Math.sin(pumpAngle) * r * 0.85);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Centre hub
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = P.amber;
+  ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill();
+
+  // Is needle in zone?
+  const inZone = (() => {
+    let diff = Math.abs(pumpAngle - pumpTarget) % (Math.PI*2);
+    if (diff > Math.PI) diff = Math.PI*2 - diff;
+    return diff < tw/2;
+  })();
+
+  // Fuel level arc
+  ctx.strokeStyle = fuel > 20 ? '#ff8800' : '#ff2200';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 16, -Math.PI/2, -Math.PI/2 + (fuel/100)*Math.PI*2);
+  ctx.stroke();
+
+  // PUMP button
+  const btnY = 310;
+  const pressing = mouse.down && mouse.y > btnY-20 && mouse.y < btnY+20 && mouse.x > cx-50 && mouse.x < cx+50;
+  ctx.fillStyle = pressing ? '#004400' : '#002200';
+  ctx.fillRect(cx-50, btnY-20, 100, 40);
+  ctx.strokeStyle = inZone ? P.green : '#444';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx-50, btnY-20, 100, 40);
+  ctx.fillStyle = inZone ? P.green : P.dim;
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PUMP', cx, btnY + 4);
+
+  // Handle click
+  if (mouse.clicked) {
+    if (mouse.x > cx-50 && mouse.x < cx+50 && mouse.y > btnY-20 && mouse.y < btnY+20) {
+      if (inZone) {
+        fuel = Math.min(100, fuel + 8);
+        pumpHits++;
+        pumpFlash = 20;
+      } else {
+        pumpMisses++;
+        pumpFail = 20;
+        fuel = Math.max(0, fuel - 2); // miss wastes fuel
+      }
+    }
+  }
+
+  if (pumpFlash > 0) {
+    ctx.fillStyle = P.green;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('+FUEL', cx + 60, cy - 10);
+  }
+  if (pumpFail > 0) {
+    ctx.fillStyle = P.red;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('MISFIRE!', cx + 60, cy - 10);
+  }
+
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`HITS: ${pumpHits}   MISSES: ${pumpMisses}   FUEL: ${Math.floor(fuel)}%`, W/2, 365);
+  ctx.fillText('CLICK PUMP WHEN NEEDLE IS IN GREEN ZONE', W/2, 378);
+}
+
+// ─────────────────────────────────────────────────────────
+// 5. SONAR / NOTES MINIGAME
+// ─────────────────────────────────────────────────────────
+function drawNotesMinigame() {
+  ctx.fillStyle = P.green;
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('── SONAR ARRAY / MISSION LOG ──', W/2, 58);
+
+  // Sonar screen (left side)
+  const sx = 70, sy = 72, sr = 110;
+  const scx = sx + sr, scy = sy + sr;
+
+  // Screen background
+  ctx.fillStyle = '#010e01';
+  ctx.beginPath(); ctx.arc(scx, scy, sr, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = P.greenDk;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(scx, scy, sr, 0, Math.PI*2); ctx.stroke();
+
+  // Range rings
+  ctx.strokeStyle = '#0a2a0a';
+  ctx.lineWidth = 1;
+  [30,60,90].forEach(rr => {
+    ctx.beginPath(); ctx.arc(scx, scy, rr, 0, Math.PI*2); ctx.stroke();
+  });
+  // Crosshairs
+  ctx.beginPath(); ctx.moveTo(scx-sr, scy); ctx.lineTo(scx+sr, scy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(scx, scy-sr); ctx.lineTo(scx, scy+sr); ctx.stroke();
+
+  // Sweep line
+  ctx.strokeStyle = 'rgba(57,255,20,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.shadowBlur = 4; ctx.shadowColor = P.green;
+  ctx.beginPath();
+  ctx.moveTo(scx, scy);
+  ctx.lineTo(scx + Math.cos(sonarSweep)*sr, scy + Math.sin(sonarSweep)*sr);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Sweep fade trail
+  ctx.save();
+  for (let t = 1; t < 12; t++) {
+    const ta = sonarSweep - t * 0.06;
+    ctx.globalAlpha = (1 - t/12) * 0.15;
+    ctx.strokeStyle = P.green;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(scx, scy);
+    ctx.lineTo(scx + Math.cos(ta)*sr, scy + Math.sin(ta)*sr);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Detected blips
+  sonarPings.forEach(p => {
+    const bx = scx + Math.cos(p.angle) * p.dist;
+    const by = scy + Math.sin(p.angle) * p.dist;
+    const col = { rock:'#888', creature:'#ff4400', thermal:'#ff8800', debris:'#448844' }[p.type];
+    ctx.save();
+    const flash = detectedBlips.find(b => b.angle === p.angle);
+    ctx.globalAlpha = flash ? 0.5 + Math.sin(frameCount*0.2)*0.3 : 0.3;
+    ctx.fillStyle = p.logged ? P.greenDk : col;
+    ctx.shadowBlur = flash ? 8 : 0;
+    ctx.shadowColor = col;
+    ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // Legend
+  ctx.fillStyle = P.greenDk;
+  ctx.font = '6px monospace';
+  ctx.textAlign = 'left';
+  const legendItems = [['◉ ROCK','#888'],['◉ CREATURE','#ff4400'],['◉ THERMAL','#ff8800'],['◉ DEBRIS','#448844']];
+  legendItems.forEach(([txt,col],i) => {
+    ctx.fillStyle = col;
+    ctx.fillText(txt, sx, sy + sr*2 + 14 + i*11);
+  });
+
+  // Log panel (right side)
+  const lx = 310, ly = 72, lw = W - lx - 30, lh = 260;
+  ctx.fillStyle = '#010e01';
+  ctx.fillRect(lx, ly, lw, lh);
+  ctx.strokeStyle = P.greenDk;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(lx, ly, lw, lh);
+
+  ctx.fillStyle = P.green;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('MISSION LOG:', lx + 6, ly + 14);
+  ctx.strokeStyle = P.greenDk;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(lx+2, ly+18); ctx.lineTo(lx+lw-2, ly+18); ctx.stroke();
+
+  // Log entries
+  logEntries.slice(-12).forEach((entry, i) => {
+    ctx.fillStyle = P.text;
+    ctx.font = '6px monospace';
+    ctx.fillText(entry, lx + 6, ly + 28 + i * 11);
+  });
+
+  // Clickable blips for logging
+  let hasUnlogged = sonarPings.some(p => !p.logged && detectedBlips.find(b=>b.angle===p.angle));
+  ctx.fillStyle = P.dim;
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+
+  if (hasUnlogged) {
+    // Show contacts to log
+    ctx.fillStyle = Math.floor(frameCount/15)%2===0 ? P.green : P.greenDk;
+    ctx.fillText('▼ CONTACTS TO LOG:', W/2, ly + lh + 14);
+    let logBtnX = 80;
+    detectedBlips.filter(b => !sonarPings.find(p=>p.angle===b.angle&&p.logged)).forEach((b,i) => {
+      const btnW = 70;
+      ctx.fillStyle = '#001800';
+      ctx.fillRect(logBtnX + i*80, ly+lh+18, btnW, 18);
+      ctx.strokeStyle = P.green;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(logBtnX + i*80, ly+lh+18, btnW, 18);
+      const typeCol = {rock:'#888',creature:'#ff4400',thermal:'#ff8800',debris:'#448844'}[b.type];
+      ctx.fillStyle = typeCol;
+      ctx.font = '7px monospace';
+      ctx.fillText(b.type.toUpperCase(), logBtnX + i*80 + btnW/2, ly+lh+30);
+      if (mouse.clicked && mouse.x > logBtnX+i*80 && mouse.x < logBtnX+i*80+btnW
+          && mouse.y > ly+lh+18 && mouse.y < ly+lh+36) {
+        // Log this contact
+        const sp = sonarPings.find(p => p.angle === b.angle);
+        if (sp) {
+          sp.logged = true;
+          const bearing = Math.floor(((b.angle + Math.PI*2) % (Math.PI*2)) * (180/Math.PI));
+          logEntries.push(`T+${Math.floor(missionTime/60).toString().padStart(3,'0')}  ${b.type.toUpperCase().padEnd(8)} BRG:${bearing.toString().padStart(3,'0')}`);
+          score += 50;
+          logSuccess = 40;
+        }
+      }
+    });
+  } else {
+    ctx.fillStyle = P.greenDk;
+    ctx.fillText('MONITORING — NO NEW CONTACTS', W/2, ly + lh + 14);
+  }
+
+  if (logSuccess > 0) {
+    ctx.fillStyle = P.green;
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('+50  CONTACT LOGGED', W/2, ly + lh + 42);
+  }
+}
+
+// ── INTRO ─────────────────────────────────────────────────
+function drawIntro() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  // Scanlines
+  for (let y = 0; y < H; y += 3) {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(0, y, W, 1);
+  }
+
+  // Sub silhouette
+  ctx.fillStyle = '#0a1a0a';
+  ctx.fillRect(100, H/2 - 20, 440, 40);
+  ctx.fillStyle = '#081208';
+  ctx.fillRect(80, H/2 - 14, 480, 28);
+  // Periscope
+  ctx.fillRect(300, H/2 - 40, 6, 22);
+  ctx.fillRect(296, H/2 - 44, 14, 6);
+
+  introTimer++;
+  const lines = [
+    { t:'U.S.S. MARIANA DEEP', y:80, c:'#39ff14', s:14, d:0 },
+    { t:'COLD WAR DEEP DIVE PROGRAM', y:100, c:'#1a7a08', s:8, d:30 },
+    { t:'CLASSIFIED — EYES ONLY', y:112, c:'#cc2200', s:7, d:60 },
+    { t:'', y:140, c:'#000', s:7, d:90 },
+    { t:'TARGET DEPTH: 800m', y:152, c:'#888', s:8, d:100 },
+    { t:'MISSION: REACH MAX DEPTH AND RETURN DATA', y:164, c:'#666', s:7, d:120 },
+    { t:'', y:200, c:'#000', s:7, d:150 },
+    { t:'MANAGE 5 CRITICAL SYSTEMS.', y:380, c:'#39ff14', s:8, d:160 },
+    { t:'WASD — MOVE BETWEEN STATIONS   E — INTERACT   ESC — CLOSE', y:396, c:'#1a7a08', s:7, d:170 },
+  ];
+  lines.forEach(l => {
+    if (introTimer < l.d) return;
+    const age = introTimer - l.d;
+    const al = Math.min(1, age/20);
+    ctx.save(); ctx.globalAlpha = al;
+    ctx.fillStyle = l.c; ctx.font = `${l.s}px monospace`; ctx.textAlign = 'center';
+    ctx.fillText(l.t, W/2, l.y);
+    ctx.restore();
+  });
+
+  // Station icons preview
+  if (introTimer > 140) {
+    const icons = [
+      { icon:'⚙', name:'HULL', col:'#cc4400' },
+      { icon:'◎', name:'HELM', col:'#ffaa00' },
+      { icon:'◈', name:'O²',   col:'#00aaff' },
+      { icon:'⛽', name:'FUEL', col:'#ff8800' },
+      { icon:'◉', name:'SONAR',col:'#39ff14' },
+    ];
+    const al = Math.min(1, (introTimer-140)/30);
+    ctx.save(); ctx.globalAlpha = al;
+    icons.forEach((ic, i) => {
+      const ix = W/2 - 160 + i * 80;
+      ctx.fillStyle = '#0a0e0a';
+      ctx.fillRect(ix-20, 310, 40, 52);
+      ctx.strokeStyle = ic.col;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ix-20, 310, 40, 52);
+      ctx.fillStyle = ic.col;
+      ctx.font = '16px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(ic.icon, ix, 338);
+      ctx.font = '6px monospace';
+      ctx.fillText(ic.name, ix, 356);
+    });
+    ctx.restore();
+  }
+
+  if (introTimer > 190) {
+    const al = Math.min(1,(introTimer-190)/30) * (0.6+Math.sin(frameCount*0.1)*0.4);
+    ctx.save(); ctx.globalAlpha = al;
+    ctx.fillStyle = '#39ff14';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('[ PRESS ENTER TO DIVE ]', W/2, H - 30);
+    ctx.restore();
+  }
+}
+
+// ── DEAD / WIN ─────────────────────────────────────────────
+function drawDeadScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.92)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.shadowBlur = 20; ctx.shadowColor = P.red;
+  ctx.fillStyle = P.redBrt;
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('SUBMARINE LOST', W/2, H/2 - 50);
+  ctx.restore();
+  ctx.fillStyle = '#663333';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  const reason = hull <= 0 ? 'HULL FAILURE — CRUSHED BY PRESSURE' :
+                 oxygen <= 0 ? 'OXYGEN DEPLETED — CREW ASPHYXIATED' :
+                 'FUEL EXHAUSTED — DRIFTING IN THE DEEP';
+  ctx.fillText(reason, W/2, H/2 - 24);
+  ctx.fillStyle = '#444';
+  ctx.fillText(`DEPTH REACHED: ${Math.floor(depth)}m / ${maxDepth}m`, W/2, H/2 - 6);
+  ctx.fillText(`CONTACTS LOGGED: ${logEntries.length}`, W/2, H/2 + 10);
+  ctx.fillText(`SCORE: ${score}`, W/2, H/2 + 26);
+  if (Math.floor(frameCount/25)%2===0) {
+    ctx.fillStyle = P.red;
+    ctx.fillText('[ ENTER — TRY AGAIN ]', W/2, H/2 + 60);
+  }
+}
+
+function drawWinScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.92)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.shadowBlur = 20; ctx.shadowColor = P.green;
+  ctx.fillStyle = P.green;
+  ctx.font = 'bold 22px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MISSION ACCOMPLISHED', W/2, H/2 - 50);
+  ctx.restore();
+  ctx.fillStyle = P.greenDk;
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('U.S.S. MARIANA DEEP — TARGET DEPTH REACHED', W/2, H/2 - 26);
+  ctx.fillText(`CONTACTS LOGGED: ${logEntries.length}`, W/2, H/2 - 6);
+  ctx.fillText(`HULL INTEGRITY: ${Math.floor(hull)}%`, W/2, H/2 + 10);
+  ctx.fillText(`SCORE: ${score}`, W/2, H/2 + 26);
+  if (Math.floor(frameCount/25)%2===0) {
+    ctx.fillStyle = P.green;
+    ctx.fillText('[ ENTER — PLAY AGAIN ]', W/2, H/2 + 60);
+  }
+}
+
+// ── UTIL ──────────────────────────────────────────────────
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ── LOOP ──────────────────────────────────────────────────
+function loop() {
+  frameCount++;
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
