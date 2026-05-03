@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TETRIS</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Courier New',monospace;}
+canvas{display:block;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const W=640,H=480;
+const DPR=window.devicePixelRatio||1;
+canvas.width=W*DPR;canvas.height=H*DPR;
+canvas.style.width=W+'px';canvas.style.height=H+'px';
+ctx.scale(DPR,DPR);
+function resize(){const s=Math.min(window.innerWidth/W,window.innerHeight/H);canvas.style.width=Math.floor(W*s)+'px';canvas.style.height=Math.floor(H*s)+'px';}
+resize();window.addEventListener('resize',resize);
+
+const COLS=10,ROWS=20,CS=22;
+const BX=(W-COLS*CS)/2,BY=(H-ROWS*CS)/2;
+let state='menu',board,piece,next,score,lines,level,frameCount=0,dropTimer=0,hi=parseInt(localStorage.getItem('tetris_hi')||'0');
+let particles=[],lineFlash=[],lockDelay=0;
+
+const PIECES=[
+  {shape:[[1,1,1,1]],color:'#00ffff'},
+  {shape:[[1,1],[1,1]],color:'#ffff00'},
+  {shape:[[0,1,0],[1,1,1]],color:'#aa00ff'},
+  {shape:[[1,0],[1,0],[1,1]],color:'#ff8800'},
+  {shape:[[0,1],[0,1],[1,1]],color:'#0044ff'},
+  {shape:[[0,1,1],[1,1,0]],color:'#00ff44'},
+  {shape:[[1,1,0],[0,1,1]],color:'#ff2200'},
+];
+
+function mkPiece(type){
+  const p=PIECES[type];
+  return{shape:p.shape.map(r=>[...r]),color:p.color,type,x:Math.floor(COLS/2)-Math.floor(p.shape[0].length/2),y:0};
+}
+
+function randPiece(){return mkPiece(Math.floor(Math.random()*PIECES.length));}
+
+function init(){
+  board=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  score=0;lines=0;level=1;dropTimer=0;particles=[];lineFlash=[];lockDelay=0;
+  next=randPiece();piece=randPiece();
+}
+
+function rotate(shape){return shape[0].map((_,i)=>shape.map(r=>r[i]).reverse());}
+
+function valid(shape,ox,oy){
+  for(let r=0;r<shape.length;r++)for(let c=0;c<shape[r].length;c++){
+    if(!shape[r][c])continue;
+    const nx=ox+c,ny=oy+r;
+    if(nx<0||nx>=COLS||ny>=ROWS)return false;
+    if(ny>=0&&board[ny][nx])return false;
+  }
+  return true;
+}
+
+function place(){
+  piece.shape.forEach((row,r)=>row.forEach((v,c)=>{if(v&&piece.y+r>=0)board[piece.y+r][piece.x+c]=piece.color;}));
+  // Check lines
+  const cleared=[];
+  for(let r=ROWS-1;r>=0;r--){if(board[r].every(c=>c)){cleared.push(r);}}
+  if(cleared.length){
+    cleared.forEach(r=>lineFlash.push({r,timer:20}));
+    setTimeout(()=>{
+      cleared.sort((a,b)=>b-a);
+      cleared.forEach(r=>{board.splice(r,1);board.unshift(Array(COLS).fill(null));});
+      lines+=cleared.length;
+      const pts=[0,100,300,500,800];
+      score+=pts[cleared.length]*level;
+      level=Math.floor(lines/10)+1;
+      lineFlash=[];
+      if(score>hi){hi=score;localStorage.setItem('tetris_hi',hi);}
+    },200);
+  }
+  piece=next;next=randPiece();
+  if(!valid(piece.shape,piece.x,piece.y))state='dead';
+}
+
+function dropSpeed(){return Math.max(2,50-level*4);}
+
+window.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(state==='menu'&&(k==='enter'||k===' ')){init();state='playing';}
+  if(state==='dead'&&(k==='enter'||k===' ')){init();state='playing';}
+  if(state!=='playing')return;
+  if(k==='arrowleft'||k==='a'){if(valid(piece.shape,piece.x-1,piece.y))piece.x--;}
+  if(k==='arrowright'||k==='d'){if(valid(piece.shape,piece.x+1,piece.y))piece.x++;}
+  if(k==='arrowdown'||k==='s'){if(valid(piece.shape,piece.x,piece.y+1))piece.y++;else{lockDelay++;if(lockDelay>3)place();}dropTimer=0;}
+  if(k==='arrowup'||k==='w'){const r=rotate(piece.shape);if(valid(r,piece.x,piece.y))piece.shape=r;}
+  if(k===' '){while(valid(piece.shape,piece.x,piece.y+1))piece.y++;place();}
+  e.preventDefault();
+});
+
+function ghostY(){let gy=piece.y;while(valid(piece.shape,piece.x,gy+1))gy++;return gy;}
+
+function update(){
+  if(state!=='playing')return;
+  frameCount++;dropTimer++;
+  lineFlash.forEach(lf=>lf.timer--);
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life--;if(p.life<=0)particles.splice(i,1);}
+  if(dropTimer>=dropSpeed()){
+    dropTimer=0;
+    if(valid(piece.shape,piece.x,piece.y+1)){piece.y++;lockDelay=0;}
+    else{lockDelay++;if(lockDelay>30)place();}
+  }
+}
+
+function drawBlock(x,y,col,alpha){
+  if(alpha!==undefined)ctx.globalAlpha=alpha;
+  ctx.fillStyle=col;
+  ctx.fillRect(BX+x*CS+1,BY+y*CS+1,CS-2,CS-2);
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  ctx.fillRect(BX+x*CS+1,BY+y*CS+1,CS-2,3);
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.fillRect(BX+x*CS+1,BY+y*CS+CS-4,CS-2,3);
+  ctx.globalAlpha=1;
+}
+
+function draw(){
+  ctx.fillStyle='#050508';ctx.fillRect(0,0,W,H);
+  if(state==='menu'){drawMenu();return;}
+
+  // Board bg
+  ctx.fillStyle='#0a0a0f';ctx.fillRect(BX,BY,COLS*CS,ROWS*CS);
+  ctx.strokeStyle='#1a1a2a';ctx.lineWidth=1;
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){ctx.strokeRect(BX+c*CS,BY+r*CS,CS,CS);}
+
+  // Placed blocks
+  board.forEach((row,r)=>row.forEach((col,c)=>{
+    if(!col)return;
+    const flash=lineFlash.find(lf=>lf.r===r);
+    if(flash)drawBlock(c,r,flash.timer%4<2?'#ffffff':col);
+    else drawBlock(c,r,col);
+  }));
+
+  // Ghost
+  const gy=ghostY();
+  piece.shape.forEach((row,r)=>row.forEach((v,c)=>{if(v)drawBlock(piece.x+c,gy+r,piece.color,0.18);}));
+
+  // Current piece
+  piece.shape.forEach((row,r)=>row.forEach((v,c)=>{if(v&&piece.y+r>=0)drawBlock(piece.x+c,piece.y+r,piece.color);}));
+
+  // Particles
+  particles.forEach(p=>{ctx.save();ctx.globalAlpha=p.life/30;ctx.fillStyle=p.color;ctx.fillRect(p.x-3,p.y-3,6,6);ctx.restore();});
+
+  // Border
+  ctx.strokeStyle='#2222aa';ctx.lineWidth=2;ctx.strokeRect(BX-1,BY-1,COLS*CS+2,ROWS*CS+2);
+
+  // Side panel
+  const PX=BX+COLS*CS+20,PY=BY;
+  ctx.fillStyle='#111122';ctx.fillRect(PX,PY,120,220);
+  ctx.strokeStyle='#2222aa';ctx.lineWidth=1;ctx.strokeRect(PX,PY,120,220);
+  ctx.fillStyle='#4444aa';ctx.font='bold 9px monospace';ctx.textAlign='left';
+  ctx.fillText('SCORE',PX+8,PY+18);
+  ctx.fillStyle='#aaaaff';ctx.font='bold 13px monospace';ctx.fillText(score,PX+8,PY+34);
+  ctx.fillStyle='#4444aa';ctx.font='bold 9px monospace';ctx.fillText('LINES',PX+8,PY+56);
+  ctx.fillStyle='#aaaaff';ctx.font='bold 13px monospace';ctx.fillText(lines,PX+8,PY+72);
+  ctx.fillStyle='#4444aa';ctx.font='bold 9px monospace';ctx.fillText('LEVEL',PX+8,PY+94);
+  ctx.fillStyle='#aaaaff';ctx.font='bold 13px monospace';ctx.fillText(level,PX+8,PY+110);
+  ctx.fillStyle='#4444aa';ctx.font='bold 9px monospace';ctx.fillText('BEST',PX+8,PY+132);
+  ctx.fillStyle='#aaaaff';ctx.font='bold 11px monospace';ctx.fillText(hi,PX+8,PY+148);
+  ctx.fillStyle='#4444aa';ctx.font='bold 9px monospace';ctx.fillText('NEXT',PX+8,PY+170);
+  const ns=5,nx=PX+30,ny=PY+188;
+  next.shape.forEach((row,r)=>row.forEach((v,c)=>{if(v){ctx.fillStyle=next.color;ctx.fillRect(nx+c*ns*2,ny+r*ns*2,ns*2-1,ns*2-1);}}));
+
+  // Controls hint
+  ctx.fillStyle='#2a2a4a';ctx.font='7px monospace';ctx.textAlign='left';
+  ['←→ move','↑  rotate','↓  soft drop','SPC hard drop'].forEach((t,i)=>ctx.fillText(t,PX+8,PY+230+i*12));
+
+  if(state==='dead'){
+    ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(0,0,W,H);
+    ctx.save();ctx.shadowBlur=20;ctx.shadowColor='#4444ff';
+    ctx.fillStyle='#aaaaff';ctx.font='bold 28px monospace';ctx.textAlign='center';
+    ctx.fillText('GAME OVER',W/2,H/2-30);ctx.restore();
+    ctx.fillStyle='#4444aa';ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText(`SCORE: ${score}   BEST: ${hi}`,W/2,H/2);
+    if(Math.floor(frameCount/25)%2===0){ctx.fillStyle='#aaaaff';ctx.fillText('[ ENTER — PLAY AGAIN ]',W/2,H/2+30);}
+  }
+}
+
+function drawMenu(){
+  ctx.save();ctx.shadowBlur=30;ctx.shadowColor='#4444ff';
+  ctx.fillStyle='#aaaaff';ctx.font='bold 64px monospace';ctx.textAlign='center';ctx.fillText('TETRIS',W/2,H/2-50);ctx.restore();
+  ctx.fillStyle='#4444aa';ctx.font='9px monospace';ctx.textAlign='center';
+  ctx.fillText('CLEAR LINES — SURVIVE AS LONG AS POSSIBLE',W/2,H/2);
+  ctx.fillText(`BEST: ${hi}`,W/2,H/2+20);
+  if(Math.floor(frameCount/25)%2===0){ctx.fillStyle='#aaaaff';ctx.font='10px monospace';ctx.fillText('[ PRESS ENTER TO START ]',W/2,H/2+50);}
+  ctx.fillStyle='#2a2a4a';ctx.font='8px monospace';ctx.fillText('←→ move  ↑ rotate  ↓ soft drop  SPACE hard drop',W/2,H-15);
+}
+
+function loop(){frameCount++;update();draw();requestAnimationFrame(loop);}
+loop();
+</script>
+</body>
+</html>

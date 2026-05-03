@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MINESWEEPER</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Courier New',monospace;}
+canvas{display:block;cursor:pointer;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const W=640,H=480;
+const DPR=window.devicePixelRatio||1;
+canvas.width=W*DPR;canvas.height=H*DPR;
+canvas.style.width=W+'px';canvas.style.height=H+'px';
+ctx.scale(DPR,DPR);
+function resize(){const s=Math.min(window.innerWidth/W,window.innerHeight/H);canvas.style.width=Math.floor(W*s)+'px';canvas.style.height=Math.floor(H*s)+'px';}
+resize();window.addEventListener('resize',resize);
+
+// Difficulty
+const DIFFS={easy:{cols:9,rows:9,mines:10},medium:{cols:16,rows:14,mines:40},hard:{cols:20,rows:16,mines:70}};
+let diff='medium',COLS,ROWS,MINES,CS;
+let state='menu',board,revealed,flagged,frameCount=0,firstClick,startTime,elapsed,hi={easy:null,medium:null,hard:null};
+try{hi=JSON.parse(localStorage.getItem('minesweeper_hi'))||hi;}catch(e){}
+
+const NUM_COLS=['','#1a44cc','#1a8a1a','#cc2200','#660088','#aa4400','#008888','#000','#444'];
+
+function setup(){
+  const d=DIFFS[diff];COLS=d.cols;ROWS=d.rows;MINES=d.mines;
+  CS=Math.min(Math.floor((W-80)/COLS),Math.floor((H-80)/ROWS));
+  board=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+  revealed=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  flagged=Array.from({length:ROWS},()=>Array(COLS).fill(false));
+  firstClick=true;elapsed=0;startTime=null;
+}
+
+function placeMines(safeR,safeC){
+  let placed=0;
+  while(placed<MINES){
+    const r=Math.floor(Math.random()*ROWS),c=Math.floor(Math.random()*COLS);
+    if(board[r][c]===-1)continue;
+    if(Math.abs(r-safeR)<=1&&Math.abs(c-safeC)<=1)continue;
+    board[r][c]=-1;placed++;
+  }
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    if(board[r][c]===-1)continue;
+    let cnt=0;
+    for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+      const nr=r+dr,nc=c+dc;
+      if(nr>=0&&nr<ROWS&&nc>=0&&nc<COLS&&board[nr][nc]===-1)cnt++;
+    }
+    board[r][c]=cnt;
+  }
+}
+
+function reveal(r,c){
+  if(r<0||r>=ROWS||c<0||c>=COLS||revealed[r][c]||flagged[r][c])return;
+  revealed[r][c]=true;
+  if(board[r][c]===0){for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)reveal(r+dr,c+dc);}
+}
+
+function checkWin(){
+  let safe=0;for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)if(board[r][c]!==-1&&revealed[r][c])safe++;
+  return safe===ROWS*COLS-MINES;
+}
+
+function bx(c){return(W-COLS*CS)/2+c*CS;}
+function by(r){return(H-ROWS*CS)/2+r*CS;}
+
+canvas.addEventListener('click',e=>{
+  const rect=canvas.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)*(W/rect.width),my=(e.clientY-rect.top)*(H/rect.height);
+  if(state==='menu'){
+    // Difficulty buttons
+    if(my>H/2&&my<H/2+40){
+      if(mx>W/2-165&&mx<W/2-60){diff='easy';setup();state='playing';}
+      else if(mx>W/2-45&&mx<W/2+45){diff='medium';setup();state='playing';}
+      else if(mx>W/2+60&&mx<W/2+165){diff='hard';setup();state='playing';}
+    }
+    return;
+  }
+  if(state==='win'||state==='dead'){setup();state='playing';return;}
+  if(state!=='playing')return;
+  const c=Math.floor((mx-bx(0))/CS),r=Math.floor((my-by(0))/CS);
+  if(r<0||r>=ROWS||c<0||c>=COLS||flagged[r][c]||revealed[r][c])return;
+  if(firstClick){firstClick=false;placeMines(r,c);startTime=Date.now();}
+  if(board[r][c]===-1){
+    // Reveal all mines
+    for(let rr=0;rr<ROWS;rr++)for(let cc=0;cc<COLS;cc++)if(board[rr][cc]===-1)revealed[rr][cc]=true;
+    state='dead';return;
+  }
+  reveal(r,c);
+  if(checkWin()){
+    elapsed=Math.floor((Date.now()-startTime)/1000);
+    if(!hi[diff]||elapsed<hi[diff]){hi[diff]=elapsed;localStorage.setItem('minesweeper_hi',JSON.stringify(hi));}
+    state='win';
+  }
+});
+
+canvas.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)*(W/rect.width),my=(e.clientY-rect.top)*(H/rect.height);
+  if(state!=='playing')return;
+  const c=Math.floor((mx-bx(0))/CS),r=Math.floor((my-by(0))/CS);
+  if(r<0||r>=ROWS||c<0||c>=COLS||revealed[r][c])return;
+  flagged[r][c]=!flagged[r][c];
+});
+
+function update(){
+  frameCount++;
+  if(state==='playing'&&startTime)elapsed=Math.floor((Date.now()-startTime)/1000);
+}
+
+function draw(){
+  ctx.fillStyle='#111';ctx.fillRect(0,0,W,H);
+  if(state==='menu'){drawMenu();return;}
+
+  const ox=bx(0),oy=by(0);
+  const totalFlags=flagged.flat().filter(Boolean).length;
+
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const x=ox+c*CS,y=oy+r*CS;
+    if(revealed[r][c]){
+      ctx.fillStyle=board[r][c]===-1?'#440000':'#1a1a1a';
+      ctx.fillRect(x,y,CS,CS);
+      ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.strokeRect(x,y,CS,CS);
+      if(board[r][c]===-1){
+        ctx.fillStyle='#ff2200';ctx.font=`${Math.max(8,CS-4)}px monospace`;ctx.textAlign='center';
+        ctx.fillText('💣',x+CS/2,y+CS*0.7);
+      } else if(board[r][c]>0){
+        ctx.fillStyle=NUM_COLS[board[r][c]];ctx.font=`bold ${Math.max(8,CS-6)}px monospace`;ctx.textAlign='center';
+        ctx.fillText(board[r][c],x+CS/2,y+CS*0.72);
+      }
+    } else {
+      // Unrevealed
+      const isFlag=flagged[r][c];
+      ctx.fillStyle=isFlag?'#1a1020':'#2a2a2a';
+      ctx.fillRect(x,y,CS,CS);
+      ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(x,y,CS,2);ctx.fillRect(x,y,2,CS);
+      ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(x,y+CS-2,CS,2);ctx.fillRect(x+CS-2,y,2,CS);
+      ctx.strokeStyle='#111';ctx.lineWidth=1;ctx.strokeRect(x,y,CS,CS);
+      if(isFlag){ctx.font=`${Math.max(8,CS-4)}px monospace`;ctx.textAlign='center';ctx.fillStyle='#ff4488';ctx.fillText('🚩',x+CS/2,y+CS*0.7);}
+    }
+  }
+
+  // HUD
+  ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(0,0,W,28);
+  ctx.fillStyle='#ff4488';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText(`💣 ${MINES-totalFlags}`,14,18);
+  ctx.fillStyle='#88ccff';ctx.textAlign='center';ctx.fillText(`${diff.toUpperCase()} — ${COLS}×${ROWS}`,W/2,18);
+  ctx.fillStyle='#ffcc44';ctx.textAlign='right';ctx.fillText(`⏱ ${elapsed}s`,W-14,18);
+  ctx.fillStyle='#333';ctx.font='7px monospace';
+  ctx.fillText(`BEST: ${hi[diff]?hi[diff]+'s':'--'}`,W-14,H-5);
+  ctx.fillStyle='#222';ctx.textAlign='left';ctx.fillText('LEFT CLICK: reveal   RIGHT CLICK: flag',14,H-5);
+
+  if(state==='dead'){
+    ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(0,0,W,H);
+    ctx.save();ctx.shadowBlur=20;ctx.shadowColor='#ff2200';
+    ctx.fillStyle='#ff4400';ctx.font='bold 32px monospace';ctx.textAlign='center';ctx.fillText('BOOM! 💥',W/2,H/2-20);ctx.restore();
+    ctx.fillStyle='#888';ctx.font='10px monospace';ctx.textAlign='center';ctx.fillText('You hit a mine!',W/2,H/2+10);
+    if(Math.floor(frameCount/25)%2===0){ctx.fillStyle='#ff4400';ctx.fillText('[ CLICK — TRY AGAIN ]',W/2,H/2+40);}
+  }
+  if(state==='win'){
+    ctx.fillStyle='rgba(0,0,0,0.8)';ctx.fillRect(0,0,W,H);
+    ctx.save();ctx.shadowBlur=20;ctx.shadowColor='#39ff14';
+    ctx.fillStyle='#39ff14';ctx.font='bold 28px monospace';ctx.textAlign='center';ctx.fillText('YOU WIN! 🎉',W/2,H/2-25);ctx.restore();
+    ctx.fillStyle='#888';ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText(`Time: ${elapsed}s${hi[diff]===elapsed?' — NEW BEST!':''}`,W/2,H/2+5);
+    if(Math.floor(frameCount/25)%2===0){ctx.fillStyle='#39ff14';ctx.fillText('[ CLICK — PLAY AGAIN ]',W/2,H/2+35);}
+  }
+}
+
+function drawMenu(){
+  ctx.fillStyle='#888';ctx.font='bold 48px monospace';ctx.textAlign='center';ctx.fillText('MINE',W/2-50,H/2-80);
+  ctx.fillStyle='#ff4400';ctx.fillText('💣',W/2+60,H/2-75);
+  ctx.fillStyle='#888';ctx.font='bold 20px monospace';ctx.fillText('SWEEPER',W/2,H/2-40);
+  ctx.fillStyle='#444';ctx.font='9px monospace';ctx.fillText('FIND ALL MINES WITHOUT HITTING ONE',W/2,H/2-10);
+  // Diff buttons
+  const diffs=[{k:'easy',col:'#39ff14',label:'EASY\n9×9 / 10💣'},{k:'medium',col:'#ffcc00',label:'MEDIUM\n16×14 / 40💣'},{k:'hard',col:'#ff4400',label:'HARD\n20×16 / 70💣'}];
+  diffs.forEach((d,i)=>{
+    const bx=W/2-165+i*105,by=H/2;
+    ctx.fillStyle='#1a1a1a';ctx.fillRect(bx,by,100,40);
+    ctx.strokeStyle=d.col;ctx.lineWidth=2;ctx.strokeRect(bx,by,100,40);
+    ctx.fillStyle=d.col;ctx.font='bold 10px monospace';ctx.textAlign='center';
+    ctx.fillText(d.label.split('\n')[0],bx+50,by+16);
+    ctx.fillStyle='#555';ctx.font='7px monospace';ctx.fillText(d.label.split('\n')[1],bx+50,by+30);
+    if(hi[d.k])ctx.fillText(`BEST: ${hi[d.k]}s`,bx+50,by+54);
+  });
+  ctx.fillStyle='#2a2a2a';ctx.font='8px monospace';ctx.textAlign='center';
+  ctx.fillText('LEFT CLICK: reveal  •  RIGHT CLICK: flag mine',W/2,H-15);
+}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+loop();setup();
+</script>
+</body>
+</html>
