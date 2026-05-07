@@ -6,8 +6,8 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:100%;height:100%;background:#050508;overflow:hidden;}
-body{display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;color:#ccc;}
+html,body{width:100%;min-height:100%;background:#050508;overflow-y:auto;}
+body{display:flex;flex-direction:column;align-items:center;font-family:'Share Tech Mono',monospace;color:#ccc;padding-bottom:2rem;}
 
 /* ── ANIMATED BG ── */
 #bg-canvas{position:fixed;inset:0;pointer-events:none;z-index:0;}
@@ -16,7 +16,8 @@ body{display:flex;align-items:center;justify-content:center;font-family:'Share T
 #hub{
   position:relative;z-index:1;
   display:flex;flex-direction:column;align-items:center;
-  padding:2rem;
+  padding:1.5rem 1rem 0;
+  width:100%;
   transition:opacity .35s,transform .35s;
 }
 #hub.hidden{opacity:0;pointer-events:none;transform:scale(.97);}
@@ -34,11 +35,11 @@ body{display:flex;align-items:center;justify-content:center;font-family:'Share T
 .logo-sub{font-size:.6rem;letter-spacing:.35em;color:#440066;margin-bottom:2.5rem;}
 
 /* Cards row */
-.cards{display:flex;gap:1.4rem;align-items:flex-start;flex-wrap:wrap;justify-content:center;max-width:960px;}
+.cards{display:flex;gap:1.2rem;align-items:flex-start;flex-wrap:wrap;justify-content:center;max-width:1000px;width:100%;}
 
 /* Game card */
 .game-card{
-  width:190px;background:#08000f;border:1px solid #2a0040;
+  width:190px;min-width:160px;background:#08000f;border:1px solid #2a0040;
   cursor:pointer;position:relative;overflow:hidden;
   transition:transform .2s,border-color .2s,box-shadow .2s;
 }
@@ -116,8 +117,7 @@ body{display:flex;align-items:center;justify-content:center;font-family:'Share T
 
 /* Fullscreen button */
 #fs-btn{
-  position:fixed;top:14px;right:14px;z-index:100;
-  background:#0a0012;border:1px solid #2a0040;color:#663377;
+  position:fixed;top:14px;right:14px;z-index:100;  background:#0a0012;border:1px solid #2a0040;color:#663377;
   font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:.12em;
   padding:.4rem .75rem;cursor:pointer;
   transition:background .15s,border-color .15s,color .15s;
