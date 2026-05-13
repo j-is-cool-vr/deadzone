@@ -313,6 +313,26 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
       </div>
     </div>
 
+    <div class="game-card" onclick="launch('geodash')">
+      <div class="card-preview"><canvas class="card-canvas" id="cv-geo" width="190" height="132"></canvas><div class="card-badge badge-new">NEW</div></div>
+      <div class="card-body">
+        <div class="card-name">🟦 GEO DASH</div>
+        <div class="card-desc">Auto-runner rhythm game. Jump and fly through 3 levels. Cube mode and ship mode.</div>
+        <div class="card-tags"><span class="tag">RHYTHM</span><span class="tag">RUNNER</span><span class="tag">HARD</span></div>
+        <button class="card-play">▶ &nbsp;PLAY NOW</button>
+      </div>
+    </div>
+
+    <div class="game-card" onclick="launch('physics')">
+      <div class="card-preview"><canvas class="card-canvas" id="cv-physics" width="190" height="132"></canvas><div class="card-badge badge-new">NEW</div></div>
+      <div class="card-body">
+        <div class="card-name">⚽ PHYSICS BATTLE</div>
+        <div class="card-desc">Balls fight to the last HP. Watch them bounce, collide and explode. Perfect for Shorts.</div>
+        <div class="card-tags"><span class="tag">PHYSICS</span><span class="tag">WATCH</span><span class="tag">SHORTS</span></div>
+        <button class="card-play">▶ &nbsp;PLAY NOW</button>
+      </div>
+    </div>
+
     <div class="game-card" onclick="launch('connect4')">
       <div class="card-preview"><canvas class="card-canvas" id="cv-c4" width="190" height="132"></canvas></div>
       <div class="card-body">
@@ -528,7 +548,8 @@ const GAMES = {
   snake:'snake.html', tetris:'tetris.html',
   spaceinvaders:'spaceinvaders.html', pong:'pong.html',
   minesweeper:'minesweeper.html', frogger:'frogger.html',
-  connect4:'connect4.html'
+  connect4:'connect4.html', geodash:'geodash.html',
+  physics:'physics.html'
 };
 let currentGame = null;
 
@@ -669,7 +690,123 @@ window.addEventListener('keydown',e=>{
   }
   animAll();
 })();
-previewDeadzone();
+
+// ── PHYSICS PREVIEW ──────────────────────────────────────────
+(function(){
+  const cv=document.getElementById('cv-physics');if(!cv)return;
+  const c=cv.getContext('2d');const W=190,H=132;
+  let f=0;
+  const balls=[
+    {x:50, y:50, vx:2.1, vy:1.4, r:18, col:'#e74c3c', hp:80, maxHp:100},
+    {x:140,y:80, vx:-1.8,vy:2.0, r:18, col:'#3498db', hp:60, maxHp:100},
+    {x:95, y:30, vx:1.2, vy:-1.6,r:16, col:'#2ecc71', hp:90, maxHp:100},
+    {x:160,y:40, vx:-2.2,vy:1.1, r:14, col:'#f39c12', hp:40, maxHp:100},
+  ];
+  let sparks=[];
+  (function frame(){
+    f++;
+    c.fillStyle='#080810';c.fillRect(0,0,W,H);
+    // Grid
+    c.strokeStyle='rgba(100,100,200,0.06)';c.lineWidth=1;
+    for(let x=0;x<W;x+=20){c.beginPath();c.moveTo(x,0);c.lineTo(x,H);c.stroke();}
+    for(let y=0;y<H;y+=20){c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
+    // Move balls
+    balls.forEach(b=>{
+      b.x+=b.vx;b.y+=b.vy;
+      if(b.x-b.r<0){b.x=b.r;b.vx=Math.abs(b.vx);}
+      if(b.x+b.r>W){b.x=W-b.r;b.vx=-Math.abs(b.vx);}
+      if(b.y-b.r<0){b.y=b.r;b.vy=Math.abs(b.vy);}
+      if(b.y+b.r>H-16){b.y=H-16-b.r;b.vy=-Math.abs(b.vy);}
+    });
+    // Collisions
+    for(let i=0;i<balls.length;i++)for(let j=i+1;j<balls.length;j++){
+      const a=balls[i],b=balls[j];
+      const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy);
+      if(dist<a.r+b.r&&dist>0){
+        const nx=dx/dist,ny=dy/dist;
+        const overlap=(a.r+b.r-dist)/2;
+        a.x-=nx*overlap;a.y-=ny*overlap;
+        b.x+=nx*overlap;b.y+=ny*overlap;
+        const relV=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
+        if(relV>0){
+          a.vx-=nx*relV;a.vy-=ny*relV;
+          b.vx+=nx*relV;b.vy+=ny*relV;
+          const dmg=Math.floor(relV*3+1);
+          a.hp=Math.max(5,a.hp-dmg);b.hp=Math.max(5,b.hp-dmg);
+          for(let s=0;s<4;s++){const a2=Math.random()*Math.PI*2,sp=2+Math.random()*3;sparks.push({x:(a.x+b.x)/2,y:(a.y+b.y)/2,vx:Math.cos(a2)*sp,vy:Math.sin(a2)*sp,life:15,col:a.col});}
+        }
+      }
+    }
+    // Sparks
+    for(let i=sparks.length-1;i>=0;i--){
+      const s=sparks[i];s.x+=s.vx;s.y+=s.vy;s.vx*=0.9;s.vy*=0.9;s.life--;
+      if(s.life<=0){sparks.splice(i,1);continue;}
+      c.save();c.globalAlpha=s.life/15;c.fillStyle=s.col;
+      c.beginPath();c.arc(s.x,s.y,2,0,Math.PI*2);c.fill();c.restore();
+    }
+    // Draw balls
+    balls.forEach(b=>{
+      const g=c.createRadialGradient(b.x-b.r*.3,b.y-b.r*.3,2,b.x,b.y,b.r);
+      g.addColorStop(0,b.col+'ff');g.addColorStop(1,b.col+'88');
+      c.fillStyle=g;c.shadowBlur=10;c.shadowColor=b.col;
+      c.beginPath();c.arc(b.x,b.y,b.r,0,Math.PI*2);c.fill();
+      c.shadowBlur=0;
+      // HP bar
+      const bw=b.r*2,bx=b.x-b.r,by=b.y+b.r+3;
+      c.fillStyle='#111';c.fillRect(bx,by,bw,4);
+      c.fillStyle=b.hp>50?b.col:'#ff2200';
+      c.fillRect(bx,by,bw*(b.hp/b.maxHp),4);
+    });
+    // Bottom label
+    c.fillStyle='rgba(0,0,0,0.6)';c.fillRect(0,H-16,W,16);
+    c.fillStyle='#888';c.font='7px monospace';c.textAlign='center';
+    c.fillText('PHYSICS BATTLE',W/2,H-5);
+    requestAnimationFrame(frame);
+  })();
+})();
+
+// ── GEODASH PREVIEW (separate loop) ─────────────────────────
+(function(){
+  const cv=document.getElementById('cv-geo');if(!cv)return;
+  const c=cv.getContext('2d');const W=190,H=132;
+  let f=0;
+  (function frame(){
+    f++;
+    const g=c.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#0a0020');g.addColorStop(1,'#001040');
+    c.fillStyle=g;c.fillRect(0,0,W,H);
+    for(let i=0;i<5;i++){const y=((f*.8+i*30)%H);c.strokeStyle='rgba(68,136,255,0.06)';c.lineWidth=1;c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
+    const GY=H-28;
+    c.fillStyle='#1a1a1a';c.fillRect(0,GY,W,H-GY);
+    c.fillStyle='#2a2a2a';c.fillRect(0,GY,W,4);
+    c.strokeStyle='rgba(255,255,255,0.04)';c.lineWidth=1;
+    for(let x=(-(f*3)%20);x<W;x+=20){c.beginPath();c.moveTo(x,GY);c.lineTo(x,H);c.stroke();}
+    const scroll=f*3;
+    [{type:'spike',x:200-scroll%300,y:GY-20},{type:'block',x:280-scroll%300,y:GY-20},
+     {type:'spike',x:320-scroll%300,y:GY-20},{type:'orb',x:240-scroll%300,y:GY-50}]
+    .forEach(o=>{
+      if(o.x<-20||o.x>W+20)return;
+      if(o.type==='spike'){c.fillStyle='#ff2200';c.shadowBlur=4;c.shadowColor='#ff2200';c.beginPath();c.moveTo(o.x,o.y+20);c.lineTo(o.x+10,o.y);c.lineTo(o.x+20,o.y+20);c.closePath();c.fill();}
+      else if(o.type==='block'){c.fillStyle='#4488ff';c.shadowBlur=4;c.shadowColor='#4488ff';c.fillRect(o.x,o.y,20,20);c.fillStyle='rgba(255,255,255,0.2)';c.fillRect(o.x,o.y,20,5);}
+      else if(o.type==='orb'){const p=0.7+Math.sin(f*.15)*.3;c.fillStyle='#ffee00';c.shadowBlur=10*p;c.shadowColor='#ffee00';c.globalAlpha=p;c.beginPath();c.arc(o.x+8,o.y,8,0,Math.PI*2);c.fill();c.globalAlpha=1;}
+      c.shadowBlur=0;
+    });
+    const py=GY-20+Math.sin(f*.12)*18;
+    c.save();c.translate(45,py+10);c.rotate(f*.08);
+    c.shadowBlur=12;c.shadowColor='#4488ff';c.fillStyle='#4488ff';c.fillRect(-10,-10,20,20);
+    c.fillStyle='rgba(255,255,255,0.2)';c.fillRect(-10,-10,20,10);
+    c.fillStyle='rgba(0,0,0,0.3)';c.fillRect(-4,-4,8,8);
+    c.strokeStyle='rgba(255,255,255,0.4)';c.lineWidth=1;c.strokeRect(-4,-4,8,8);
+    c.shadowBlur=0;c.restore();
+    for(let t=1;t<=5;t++){c.save();c.globalAlpha=0.15*(1-t/5);c.fillStyle='#4488ff';const ts=14*(1-t/6);c.fillRect(45-t*7,py+10-ts/2,ts,ts);c.restore();}
+    c.fillStyle='rgba(0,0,0,0.5)';c.fillRect(0,0,W,10);
+    const prog=(f%200)/200;
+    c.fillStyle='#4488ff';c.shadowBlur=4;c.shadowColor='#4488ff';c.fillRect(0,1,W*prog,7);c.shadowBlur=0;
+    c.fillStyle='rgba(255,255,255,0.4)';c.font='5px monospace';c.textAlign='right';c.fillText(Math.floor(prog*100)+'%',W-2,8);
+    c.fillStyle='rgba(255,255,255,0.2)';c.textAlign='left';c.fillText('STEREO MADNESS',3,8);
+    requestAnimationFrame(frame);
+  })();
+})();
 previewShift();
 previewDepth();
 (function previewSumo(){
