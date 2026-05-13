@@ -2,34 +2,122 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Physics Shorts Engine</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>Physics Battle Shorts Engine</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #1a1a1a;
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    background: #0a0a0a;
     color: #eee;
     font-family: -apple-system, system-ui, sans-serif;
-    display: flex;
-    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+    overflow-x: hidden;
   }
+
+  /* ============ DEVICE PICKER ============ */
+  #picker {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    padding-top: max(20px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    z-index: 10000;
+    text-align: center;
+  }
+  #picker h1 {
+    font-size: 28px;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #88aaff, #ff6688);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  #picker p {
+    color: #aaa;
+    margin-bottom: 30px;
+    font-size: 15px;
+    max-width: 320px;
+  }
+  .device-btn {
+    width: 280px;
+    max-width: 90vw;
+    padding: 20px 24px;
+    margin: 10px 0;
+    background: #1f1f2e;
+    color: #fff;
+    border: 2px solid #333;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.1s, border-color 0.2s, background 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+    font-family: inherit;
+  }
+  .device-btn:hover, .device-btn:active {
+    border-color: #88aaff;
+    background: #252540;
+    transform: scale(1.02);
+  }
+  /* Children should never absorb a tap — let it reach the button */
+  .device-btn * { pointer-events: none; }
+  .device-btn .icon {
+    font-size: 32px;
+    width: 40px;
+    text-align: center;
+  }
+  .device-btn .label { flex: 1; }
+  .device-btn .label small {
+    display: block;
+    font-size: 12px;
+    font-weight: 400;
+    color: #888;
+    margin-top: 2px;
+  }
+  #picker .reset-hint {
+    margin-top: 30px;
+    font-size: 11px;
+    color: #555;
+  }
+  body.picked #picker { display: none; }
+
+  /* ============ DESKTOP / CHROMEBOOK LAYOUT (default) ============ */
+  body { display: flex; min-height: 100vh; min-height: 100dvh; }
   #controls {
-    width: 340px;
+    width: 360px;
     padding: 16px;
-    background: #222;
+    background: #1a1a1a;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     border-right: 1px solid #333;
+    max-height: 100vh;
+    max-height: 100dvh;
   }
   #controls h2 { font-size: 14px; margin: 14px 0 6px; color: #8af; text-transform: uppercase; letter-spacing: 1px; }
   #controls h2:first-child { margin-top: 0; }
   #controls label { display: block; font-size: 12px; margin: 8px 0 2px; color: #bbb; }
   #controls input, #controls select, #controls button {
     width: 100%;
-    padding: 6px 8px;
-    background: #333;
+    padding: 8px 10px;
+    background: #2a2a2a;
     color: #eee;
-    border: 1px solid #444;
-    border-radius: 4px;
-    font-size: 13px;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
   }
   #controls button {
     cursor: pointer;
@@ -37,111 +125,241 @@
     border-color: #2a6;
     margin-top: 6px;
     font-weight: 600;
+    padding: 12px;
+    font-size: 15px;
   }
-  #controls button:hover { background: #3b7; }
+  #controls button:hover, #controls button:active { background: #3b7; }
   #controls button.alt { background: #555; border-color: #555; }
-  #controls button.alt:hover { background: #666; }
+  #controls button.alt:hover, #controls button.alt:active { background: #666; }
   .row { display: flex; gap: 6px; }
   .row > * { flex: 1; }
+
   #stage {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #0a0a0a;
+    position: relative;
   }
   canvas {
     background: #000;
     display: block;
-    /* 9:16 aspect ratio for Shorts/Reels/TikTok */
-    width: min(calc(100vh - 32px) * 9 / 16, calc(100vw - 372px));
+    width: min(calc(100vh - 32px) * 9 / 16, calc(100vw - 392px));
     aspect-ratio: 9 / 16;
     border-radius: 8px;
     box-shadow: 0 0 40px rgba(0,0,0,0.6);
+    touch-action: none;
   }
   .hint { font-size: 11px; color: #888; margin-top: 4px; line-height: 1.4; }
-  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
   fieldset { border: 1px solid #333; padding: 8px; border-radius: 4px; margin-top: 8px; }
-  legend { font-size: 11px; padding: 0 4px; color: #8af; }
+  legend { font-size: 11px; padding: 0 4px; color: #8af; font-weight: 600; }
+  .param-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  .param-row label { flex: 1; margin: 0; font-size: 11px; }
+  .param-row input { flex: 0 0 80px; }
+
+  /* Toggle button — hidden on desktop, shown on iPhone */
+  #panelToggle { display: none; }
+
+  /* ============ CHROMEBOOK TWEAKS ============ */
+  /* Chromebooks are touchscreen+keyboard. Slightly larger touch targets,
+     keep the side-by-side layout since the screen is wide enough. */
+  body.device-chromebook #controls input,
+  body.device-chromebook #controls select {
+    padding: 10px 12px;
+    font-size: 15px;
+  }
+  body.device-chromebook #controls button {
+    padding: 14px;
+    font-size: 16px;
+  }
+
+  /* ============ IPHONE LAYOUT ============ */
+  body.device-iphone {
+    display: block;
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
+  }
+  body.device-iphone #stage {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    padding: env(safe-area-inset-top) 8px env(safe-area-inset-bottom) 8px;
+  }
+  body.device-iphone canvas {
+    width: 100%;
+    height: auto;
+    max-height: 100%;
+    max-width: calc((100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 9 / 16);
+  }
+  /* Floating toggle button (hamburger) */
+  body.device-iphone #panelToggle {
+    display: flex;
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 12px);
+    right: 12px;
+    width: 48px;
+    height: 48px;
+    background: rgba(30,30,40,0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid #444;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 22px;
+    z-index: 100;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  /* Controls panel becomes a bottom sheet */
+  body.device-iphone #controls {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 75vh;
+    max-height: 75dvh;
+    border-right: none;
+    border-top: 1px solid #333;
+    border-radius: 16px 16px 0 0;
+    padding: 16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    z-index: 99;
+    transform: translateY(100%);
+    transition: transform 0.3s ease-out;
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+  }
+  body.device-iphone.panel-open #controls {
+    transform: translateY(0);
+  }
+  /* Bigger touch targets on iPhone */
+  body.device-iphone #controls input,
+  body.device-iphone #controls select {
+    padding: 12px;
+    font-size: 16px; /* 16px prevents iOS auto-zoom on focus */
+    min-height: 44px;
+  }
+  body.device-iphone #controls button {
+    padding: 16px;
+    font-size: 17px;
+    min-height: 50px;
+  }
+  body.device-iphone #controls input[type="range"] {
+    min-height: 30px;
+  }
+  body.device-iphone #controls input[type="color"] {
+    min-height: 44px;
+    padding: 4px;
+  }
+  body.device-iphone .param-row input { flex: 0 0 100px; min-height: 44px; }
+  /* Drag handle on the bottom sheet */
+  body.device-iphone #controls::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: #555;
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+  /* Backdrop when panel is open */
+  body.device-iphone #backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 98;
+  }
+  body.device-iphone.panel-open #backdrop { display: block; }
 </style>
 </head>
 <body>
 
+<!-- ===== DEVICE PICKER ===== -->
+<div id="picker">
+  <h1>Physics Battle Engine</h1>
+  <p>What are you using? This sets the layout for your screen.</p>
+  <button class="device-btn" data-device="pc">
+    <span class="icon">🖥️</span>
+    <span class="label">PC / Mac<small>Big screen with a mouse</small></span>
+  </button>
+  <button class="device-btn" data-device="chromebook">
+    <span class="icon">💻</span>
+    <span class="label">Chromebook / Laptop<small>Touchscreen laptop</small></span>
+  </button>
+  <button class="device-btn" data-device="iphone">
+    <span class="icon">📱</span>
+    <span class="label">iPhone / Phone<small>Touch only, small screen</small></span>
+  </button>
+  <div class="reset-hint">Tap "Change Device" later in the controls panel to switch.</div>
+</div>
+
+<!-- iPhone-only floating toggle button -->
+<button id="panelToggle" aria-label="Toggle controls">⚙️</button>
+<div id="backdrop"></div>
+
 <div id="controls">
-  <h2>Mode</h2>
-  <select id="mode">
-    <option value="grow">Collision Grow (Ball Wins)</option>
-    <option value="shrink">Collision Shrink (Last Standing)</option>
-    <option value="battle">Battle (HP & Damage)</option>
-  </select>
 
   <fieldset>
     <legend>Ball 1</legend>
+    <label>Class</label>
+    <select id="cls1"></select>
     <label>Name</label>
     <input type="text" id="n1" value="Red">
     <label>Color</label>
     <input type="color" id="c1" value="#ff3344">
-    <label>Starting HP (battle mode)</label>
+    <label>Starting HP</label>
     <input type="number" id="hp1" value="200" min="1">
+    <div id="params1"></div>
   </fieldset>
 
   <fieldset>
     <legend>Ball 2</legend>
+    <label>Class</label>
+    <select id="cls2"></select>
     <label>Name</label>
     <input type="text" id="n2" value="Green">
     <label>Color</label>
     <input type="color" id="c2" value="#33dd55">
-    <label>Starting HP (battle mode)</label>
+    <label>Starting HP</label>
     <input type="number" id="hp2" value="200" min="1">
+    <div id="params2"></div>
   </fieldset>
 
   <h2>Arena</h2>
   <label>Arena Color</label>
-  <input type="color" id="arenaColor" value="#222222">
+  <input type="color" id="arenaColor" value="#1a1a1a">
   <label>Background</label>
   <input type="color" id="bgColor" value="#000000">
 
   <h2>Physics</h2>
-  <label>Gravity: <span id="gravVal">0.25</span></label>
-  <input type="range" id="grav" min="0" max="1" step="0.01" value="0.25">
+  <label>Gravity: <span id="gravVal">0.08</span></label>
+  <input type="range" id="grav" min="0" max="1" step="0.01" value="0.08">
   <label>Bounciness: <span id="bounceVal">1.0</span></label>
   <input type="range" id="bounce" min="0.5" max="1.2" step="0.01" value="1.0">
-  <label>Ball Speed: <span id="spdVal">8</span></label>
-  <input type="range" id="spd" min="2" max="20" step="0.5" value="8">
+  <label>Ball Speed: <span id="spdVal">7</span></label>
+  <input type="range" id="spd" min="2" max="20" step="0.5" value="7">
 
   <h2>Title Text</h2>
-  <input type="text" id="title" value="Every time they collide, they grow!">
+  <input type="text" id="title" value="Which one will win?">
 
   <h2>Sound</h2>
-  <label><input type="checkbox" id="soundOn" checked style="width:auto;margin-right:6px"> Enable impact sounds</label>
-  <label>Sound Style</label>
-  <select id="soundStyle">
-    <option value="pop">Pop (soft bubble)</option>
-    <option value="thud" selected>Thud (heavy hit)</option>
-    <option value="ping">Ping (high tone)</option>
-    <option value="click">Click (sharp)</option>
-    <option value="boom">Boom (deep)</option>
-  </select>
-  <label>Volume: <span id="volVal">0.5</span></label>
+  <label><input type="checkbox" id="soundOn" checked style="width:auto;margin-right:6px"> Enable sounds</label>
+  <label>Master Volume: <span id="volVal">0.5</span></label>
   <input type="range" id="vol" min="0" max="1" step="0.05" value="0.5">
-  <label>Pitch Variation: <span id="pitchVal">0.3</span></label>
-  <input type="range" id="pitchVar" min="0" max="1" step="0.05" value="0.3">
-  <p class="hint">Sounds get higher-pitched for harder hits. OBS captures them automatically via Window or Application Audio Capture.</p>
 
   <h2>Controls</h2>
   <div class="row">
     <button id="start">▶ Start</button>
     <button id="reset" class="alt">↻ Reset</button>
   </div>
-  <p class="hint">Press <b>Start</b>, then record this window in OBS using a Window Capture. The canvas is locked to a 9:16 ratio so it's ready for Shorts / TikTok / Reels.</p>
+  <button id="changeDevice" class="alt" style="margin-top:12px;">📱 Change Device</button>
+  <p class="hint">Each class has its own ability + unique sound. Capture this canvas in OBS as a Window Capture for Shorts/TikTok.</p>
 
-  <h2>Tips</h2>
-  <p class="hint">
-    • Use distinct colors for the two balls so viewers can pick a side.<br>
-    • Keep videos under 60s for Shorts.<br>
-    • Add a "which one will win?" question on screen.<br>
-    • Change mode + names + title for each video — same engine, infinite content.
-  </p>
 </div>
 
 <div id="stage">
@@ -150,161 +368,605 @@
 
 <script>
 /* ============================================================
-   PHYSICS SHORTS ENGINE
-   - Mode 1 (grow):    on collision the winning ball grows
-   - Mode 2 (shrink):  on collision the loser shrinks until gone
-   - Mode 3 (battle):  balls take HP damage on each collision,
-                       with damage numbers floating up
+   DEVICE PICKER  —  shows a layout chooser before the engine
+   ============================================================ */
+(function setupPicker() {
+  const STORAGE_KEY = 'physicsEngine_device';
+
+  // Allow ?picker=1 in the URL to force-show the picker (useful if
+  // localStorage got stuck in a bad state)
+  let forcePicker = false;
+  try {
+    if (location.search.indexOf('picker=1') !== -1) {
+      forcePicker = true;
+      try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+    }
+  } catch(e) {}
+
+  function applyDevice(device) {
+    document.body.classList.remove('device-pc', 'device-chromebook', 'device-iphone');
+    document.body.classList.add('device-' + device);
+    document.body.classList.add('picked');
+    try { localStorage.setItem(STORAGE_KEY, device); } catch(e) {}
+  }
+
+  function showPicker() {
+    document.body.classList.remove('picked');
+  }
+
+  // Wire up the three device buttons.
+  // Use closest() to walk up from whatever inner element was tapped (icon
+  // span, label span) and find the actual button with data-device. Mobile
+  // Safari sometimes fires the event on the inner span instead of the button.
+  function pickerHandler(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.device)
+                ? e.currentTarget
+                : (e.target.closest ? e.target.closest('.device-btn') : null);
+    if (btn && btn.dataset && btn.dataset.device) {
+      applyDevice(btn.dataset.device);
+    }
+  }
+  document.querySelectorAll('.device-btn').forEach(btn => {
+    btn.addEventListener('click', pickerHandler);
+    btn.addEventListener('touchend', pickerHandler);
+  });
+
+  // Wire up the "Change Device" button (deferred — element may not exist yet
+  // if this script ran before the DOM was fully parsed; but in our file the
+  // script is at the bottom so it does exist).
+  const changeBtn = document.getElementById('changeDevice');
+  if (changeBtn) changeBtn.addEventListener('click', showPicker);
+
+  // iPhone panel toggle (hamburger / settings gear)
+  const toggleBtn = document.getElementById('panelToggle');
+  const backdrop  = document.getElementById('backdrop');
+  function togglePanel() {
+    document.body.classList.toggle('panel-open');
+  }
+  if (toggleBtn) toggleBtn.addEventListener('click', togglePanel);
+  if (backdrop)  backdrop.addEventListener('click', () => document.body.classList.remove('panel-open'));
+
+  // Restore previous choice if any. If none (or picker=1 in URL), show the picker.
+  let saved = null;
+  try { saved = localStorage.getItem(STORAGE_KEY); } catch(e) {}
+  if (!forcePicker && (saved === 'pc' || saved === 'chromebook' || saved === 'iphone')) {
+    applyDevice(saved);
+  } else {
+    showPicker();
+  }
+})();
+
+/* ============================================================
+   PHYSICS BATTLE SHORTS ENGINE  —  v2
+   Character classes with unique abilities + synthesized sounds
    ============================================================ */
 
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const W = cv.width, H = cv.height;
-
-// Arena geometry (circle in center, like the reference videos)
 const arena = { cx: W/2, cy: H/2 + 40, r: 230 };
 
-// State
-let balls = [];
-let particles = [];   // little spark particles on impact
-let damageTexts = []; // floating damage numbers (battle mode)
-let running = false;
-let winner = null;
-let winSoundPlayed = false;
-let frame = 0;
-
-// Settings (read from UI)
+let balls = [], projectiles = [], webs = [], particles = [], damageTexts = [];
+let running = false, winner = null, winSoundPlayed = false, frame = 0;
 let cfg = {};
 
-/* ============================================================
-   SOUND ENGINE — synthesizes impact sounds with Web Audio API
-   No external files, no licensing issues.
-   ============================================================ */
+// ===== AUDIO ENGINE =====
 let audioCtx = null;
 function ensureAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  // browsers suspend audio until a user gesture; resume on demand
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
-
-// intensity 0..1 — louder/higher pitch for harder collisions
-function playHit(intensity = 0.5) {
+function tone(opts) {
   if (!cfg.soundOn || !audioCtx) return;
-  const t = audioCtx.currentTime;
-  const vol = cfg.vol;
-  const variation = (Math.random() - 0.5) * 2 * cfg.pitchVar; // -pitchVar..+pitchVar
-  const style = cfg.soundStyle;
-
-  // Each style is a different synth recipe
-  if (style === 'pop') {
-    // sine sweep down — soft bubble pop
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    const base = 600 * Math.pow(2, variation);
-    osc.frequency.setValueAtTime(base * (1 + intensity), t);
-    osc.frequency.exponentialRampToValueAtTime(base * 0.4, t + 0.12);
-    gain.gain.setValueAtTime(vol * (0.4 + intensity * 0.6), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + 0.16);
+  const t = audioCtx.currentTime + (opts.delay || 0);
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = opts.type || 'sine';
+  osc.frequency.setValueAtTime(opts.freq, t);
+  if (opts.freqEnd !== undefined) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, opts.freqEnd), t + opts.dur);
   }
-  else if (style === 'thud') {
-    // low sine + filtered noise — heavy ball-hit
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    const base = 140 * Math.pow(2, variation * 0.5);
-    osc.frequency.setValueAtTime(base * (1 + intensity * 0.6), t);
-    osc.frequency.exponentialRampToValueAtTime(base * 0.5, t + 0.18);
-    gain.gain.setValueAtTime(vol * (0.5 + intensity * 0.5), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + 0.24);
-    // add a noise click on top
-    addNoiseBurst(t, 0.04, vol * 0.3 * intensity, 2000);
-  }
-  else if (style === 'ping') {
-    // bright triangle/sine — bell-ish
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'triangle';
-    const base = 1100 * Math.pow(2, variation);
-    osc.frequency.setValueAtTime(base * (1 + intensity * 0.4), t);
-    gain.gain.setValueAtTime(vol * (0.3 + intensity * 0.5), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + 0.26);
-  }
-  else if (style === 'click') {
-    // very short sharp click — table tennis vibe
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'square';
-    const base = 1800 * Math.pow(2, variation);
-    osc.frequency.setValueAtTime(base * (1 + intensity * 0.3), t);
-    gain.gain.setValueAtTime(vol * (0.25 + intensity * 0.35), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + 0.05);
-  }
-  else if (style === 'boom') {
-    // deep sub thump with longer tail
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    const base = 70 * Math.pow(2, variation * 0.4);
-    osc.frequency.setValueAtTime(base * 2.5, t);
-    osc.frequency.exponentialRampToValueAtTime(base, t + 0.3);
-    gain.gain.setValueAtTime(vol * (0.6 + intensity * 0.4), t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t); osc.stop(t + 0.42);
-  }
+  const vol = (opts.vol ?? 0.4) * cfg.vol;
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(vol, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + opts.dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t); osc.stop(t + opts.dur + 0.02);
 }
-
-// Short filtered-noise burst — used to add a "click" to thud
-function addNoiseBurst(t, dur, vol, cutoff) {
-  const bufSize = Math.floor(audioCtx.sampleRate * dur);
+function noise(opts) {
+  if (!cfg.soundOn || !audioCtx) return;
+  const t = audioCtx.currentTime + (opts.delay || 0);
+  const dur = opts.dur;
+  const bufSize = Math.max(1, Math.floor(audioCtx.sampleRate * dur));
   const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
   const src = audioCtx.createBufferSource();
   src.buffer = buf;
   const filter = audioCtx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = cutoff;
+  filter.type = opts.filterType || 'lowpass';
+  filter.frequency.value = opts.cutoff || 2000;
+  filter.Q.value = opts.q || 1;
   const gain = audioCtx.createGain();
+  const vol = (opts.vol ?? 0.4) * cfg.vol;
   gain.gain.setValueAtTime(vol, t);
   gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
   src.connect(filter).connect(gain).connect(audioCtx.destination);
   src.start(t);
 }
 
-// Played once when somebody wins
-function playWin() {
-  if (!cfg.soundOn || !audioCtx) return;
-  const t = audioCtx.currentTime;
-  // three rising notes
-  [523, 659, 784].forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0, t + i*0.12);
-    gain.gain.linearRampToValueAtTime(cfg.vol * 0.4, t + i*0.12 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + i*0.12 + 0.3);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start(t + i*0.12);
-    osc.stop(t + i*0.12 + 0.32);
+// === SFX library — each ability has its own characterized sound ===
+const SFX = {
+  hit(intensity = 0.5) {
+    tone({ type: 'sine', freq: 180 + intensity*100, freqEnd: 70,
+           dur: 0.15, vol: 0.3 + intensity*0.4 });
+    noise({ dur: 0.04, cutoff: 1500, vol: 0.15 * intensity });
+  },
+  gunshot() {
+    noise({ dur: 0.08, filterType: 'highpass', cutoff: 1200, vol: 0.5 });
+    tone({ type: 'square', freq: 280, freqEnd: 60, dur: 0.1, vol: 0.35 });
+  },
+  bulletHit() {
+    tone({ type: 'sawtooth', freq: 600, freqEnd: 200, dur: 0.06, vol: 0.3 });
+    noise({ dur: 0.03, cutoff: 3000, vol: 0.2 });
+  },
+  heal() {
+    tone({ type: 'sine', freq: 660, dur: 0.15, vol: 0.3 });
+    tone({ type: 'sine', freq: 990, dur: 0.18, vol: 0.25, delay: 0.05 });
+    tone({ type: 'sine', freq: 1320, dur: 0.2, vol: 0.2, delay: 0.1 });
+  },
+  webShoot() {
+    tone({ type: 'sawtooth', freq: 200, freqEnd: 800, dur: 0.18, vol: 0.25 });
+    noise({ dur: 0.1, filterType: 'bandpass', cutoff: 2500, q: 5, vol: 0.15 });
+  },
+  webStick() {
+    tone({ type: 'sawtooth', freq: 300, freqEnd: 80, dur: 0.15, vol: 0.18 });
+  },
+  explosion() {
+    noise({ dur: 0.4, filterType: 'lowpass', cutoff: 800, vol: 0.6 });
+    tone({ type: 'sine', freq: 80, freqEnd: 30, dur: 0.5, vol: 0.5 });
+  },
+  vampire() {
+    tone({ type: 'sawtooth', freq: 400, freqEnd: 800, dur: 0.25, vol: 0.3 });
+    tone({ type: 'sine', freq: 200, freqEnd: 400, dur: 0.2, vol: 0.2, delay: 0.05 });
+  },
+  snipeCharge() {
+    tone({ type: 'sine', freq: 200, freqEnd: 1200, dur: 0.4, vol: 0.2 });
+  },
+  snipeFire() {
+    noise({ dur: 0.2, filterType: 'highpass', cutoff: 1500, vol: 0.7 });
+    tone({ type: 'square', freq: 180, freqEnd: 40, dur: 0.25, vol: 0.5 });
+  },
+  tankSlam() {
+    tone({ type: 'sine', freq: 60, freqEnd: 25, dur: 0.5, vol: 0.55 });
+    noise({ dur: 0.15, cutoff: 400, vol: 0.4 });
+  },
+  shieldUp() {
+    tone({ type: 'triangle', freq: 400, freqEnd: 800, dur: 0.25, vol: 0.3 });
+  },
+  shieldBlock() {
+    tone({ type: 'square', freq: 1500, freqEnd: 800, dur: 0.08, vol: 0.3 });
+  },
+  dash() {
+    tone({ type: 'sawtooth', freq: 800, freqEnd: 200, dur: 0.15, vol: 0.3 });
+  },
+  poisonHit() {
+    tone({ type: 'sawtooth', freq: 300, freqEnd: 600, dur: 0.2, vol: 0.25 });
+  },
+  win() {
+    [523, 659, 784, 1046].forEach((f, i) =>
+      tone({ type: 'triangle', freq: f, dur: 0.3, vol: 0.4, delay: i*0.12 }));
+  },
+};
+
+/* ============================================================
+   CHARACTER CLASSES
+   Each class defines:
+     - label, defaultColor, params (UI fields), onTick, onCollide, draw
+   ============================================================ */
+const CLASSES = {
+
+  normal: {
+    label: 'Normal', defaultColor: '#888888', params: [],
+    onTick(){}, onCollide(){}, draw(){}
+  },
+
+  gunner: {
+    label: 'Gunner', defaultColor: '#ffaa22',
+    params: [
+      { id: 'shootInterval', label: 'Shoot every (sec)', val: 1.5, min: 0.3, max: 10, step: 0.1 },
+      { id: 'bulletSpeed',   label: 'Bullet speed',      val: 9,   min: 2,   max: 25, step: 0.5 },
+      { id: 'bulletDamage',  label: 'Bullet damage',     val: 8,   min: 1,   max: 100, step: 1 },
+    ],
+    onTick(self, others) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.cd <= 0) {
+        const target = others.find(o => o.alive);
+        if (target) {
+          const dx = target.x - self.x, dy = target.y - self.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const spd = self.params.bulletSpeed;
+          projectiles.push({
+            kind: 'bullet', owner: self, x: self.x, y: self.y,
+            vx: dx/d*spd, vy: dy/d*spd, r: 6,
+            damage: self.params.bulletDamage, color: self.color, life: 240
+          });
+          SFX.gunshot();
+        }
+        self.cd = self.params.shootInterval * 60;
+      }
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      const ang = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(b.r-2, -4, 14, 8);
+      ctx.restore();
+    }
+  },
+
+  healer: {
+    label: 'Healer', defaultColor: '#22dd88',
+    params: [
+      { id: 'healInterval', label: 'Heal every (sec)', val: 2,  min: 0.3, max: 15, step: 0.1 },
+      { id: 'healAmount',   label: 'Heal amount',      val: 10, min: 1,   max: 200, step: 1 },
+    ],
+    onTick(self) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.cd <= 0) {
+        if (self.hp < self.maxHp) {
+          const amt = Math.min(self.params.healAmount, self.maxHp - self.hp);
+          self.hp += amt;
+          spawnDamage(self.x, self.y - self.r - 10, '+'+amt, '#22ff88');
+          for (let i=0;i<10;i++){
+            const a = Math.random()*Math.PI*2, s = 1+Math.random()*2;
+            particles.push({x:self.x,y:self.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:40,color:'#33ff88'});
+          }
+          SFX.heal();
+          self.healPulse = 20;
+        }
+        self.cd = self.params.healInterval * 60;
+      }
+      if (self.healPulse > 0) self.healPulse--;
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      if (b.healPulse > 0) {
+        ctx.strokeStyle = '#33ff88';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = b.healPulse / 20;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r + (20 - b.healPulse)*1.5, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(b.x-2, b.y-8, 4, 16);
+      ctx.fillRect(b.x-8, b.y-2, 16, 4);
+    }
+  },
+
+  spider: {
+    label: 'Spider', defaultColor: '#9944cc',
+    params: [
+      { id: 'webInterval', label: 'Web every (sec)', val: 2,   min: 0.5, max: 10, step: 0.1 },
+      { id: 'webSlow',     label: 'Slow %',          val: 60,  min: 10,  max: 95, step: 5 },
+      { id: 'webDuration', label: 'Web lasts (sec)', val: 5,   min: 1,   max: 30, step: 0.5 },
+      { id: 'webRadius',   label: 'Web radius',      val: 45,  min: 15,  max: 100, step: 5 },
+    ],
+    onTick(self) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.cd <= 0) {
+        webs.push({
+          owner: self, x: self.x, y: self.y, r: self.params.webRadius,
+          slow: 1 - self.params.webSlow/100,
+          life: self.params.webDuration * 60,
+          maxLife: self.params.webDuration * 60, color: self.color,
+        });
+        SFX.webShoot();
+        self.cd = self.params.webInterval * 60;
+      }
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      for (let i=0;i<8;i++) {
+        const a = (i/8)*Math.PI*2 + frame*0.02;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.lineTo(b.x + Math.cos(a)*(b.r+8), b.y + Math.sin(a)*(b.r+8));
+        ctx.stroke();
+      }
+    }
+  },
+
+  bomber: {
+    label: 'Bomber', defaultColor: '#ff6622',
+    params: [
+      { id: 'bombInterval', label: 'Bomb every (sec)', val: 3,   min: 1,   max: 15, step: 0.5 },
+      { id: 'bombDamage',   label: 'Bomb damage',      val: 25,  min: 1,   max: 200, step: 1 },
+      { id: 'bombRadius',   label: 'Blast radius',     val: 110, min: 30,  max: 230, step: 10 },
+      { id: 'fuseTime',     label: 'Fuse time (sec)',  val: 1.5, min: 0.3, max: 5, step: 0.1 },
+    ],
+    onTick(self) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.cd <= 0) {
+        projectiles.push({
+          kind: 'bomb', owner: self, x: self.x, y: self.y,
+          vx: self.vx*0.3, vy: self.vy*0.3, r: 10,
+          fuse: self.params.fuseTime * 60,
+          damage: self.params.bombDamage,
+          blast: self.params.bombRadius, color: '#222',
+        });
+        self.cd = self.params.bombInterval * 60;
+      }
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(b.x - b.r*0.4, b.y - b.r*0.4, b.r*0.2, 0, Math.PI*2);
+      ctx.fill();
+    }
+  },
+
+  vampire: {
+    label: 'Vampire', defaultColor: '#aa1144',
+    params: [
+      { id: 'lifesteal', label: 'Lifesteal %',      val: 150, min: 10, max: 300, step: 10 },
+      { id: 'bonusDmg',  label: 'Extra dmg on hit', val: 5,   min: 0,  max: 50, step: 1 },
+    ],
+    onTick(){},
+    onCollide(self, other) {
+      if (other.alive && other.shieldTimer <= 0) {
+        const dmg = self.params.bonusDmg;
+        if (dmg > 0) {
+          other.hp -= dmg;
+          other.flash = 8;
+          spawnDamage(other.x, other.y - other.r - 10, dmg, '#ff5566');
+        }
+        const heal = Math.round(dmg * self.params.lifesteal / 100);
+        if (heal > 0) {
+          const realHeal = Math.min(heal, self.maxHp - self.hp);
+          if (realHeal > 0) {
+            self.hp += realHeal;
+            spawnDamage(self.x, self.y - self.r - 10, '+'+realHeal, '#ff66aa');
+          }
+        }
+        SFX.vampire();
+      }
+    },
+    draw(ctx, b) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(b.x-4, b.y-2);
+      ctx.lineTo(b.x, b.y+6);
+      ctx.lineTo(b.x+4, b.y-2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  },
+
+  sniper: {
+    label: 'Sniper', defaultColor: '#3366ff',
+    params: [
+      { id: 'shootInterval', label: 'Shoot every (sec)', val: 4,  min: 1, max: 20, step: 0.5 },
+      { id: 'bulletSpeed',   label: 'Bullet speed',      val: 18, min: 5, max: 30, step: 0.5 },
+      { id: 'bulletDamage',  label: 'Bullet damage',     val: 40, min: 1, max: 500, step: 1 },
+      { id: 'chargeTime',    label: 'Charge time (sec)', val: 1,  min: 0, max: 5, step: 0.1 },
+    ],
+    onTick(self, others) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.cd <= self.params.chargeTime * 60 && !self.charging && self.cd > 0) {
+        self.charging = true;
+        SFX.snipeCharge();
+      }
+      if (self.cd <= 0) {
+        const target = others.find(o => o.alive);
+        if (target) {
+          const dx = target.x - self.x, dy = target.y - self.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const spd = self.params.bulletSpeed;
+          projectiles.push({
+            kind: 'bullet', owner: self, x: self.x, y: self.y,
+            vx: dx/d*spd, vy: dy/d*spd, r: 8,
+            damage: self.params.bulletDamage, color: '#fff', life: 240, big: true,
+          });
+          SFX.snipeFire();
+        }
+        self.charging = false;
+        self.cd = self.params.shootInterval * 60;
+      }
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      if (b.charging) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r + 10 + Math.sin(frame*0.3)*3, 0, Math.PI*2);
+        ctx.stroke();
+      }
+    }
+  },
+
+  tank: {
+    label: 'Tank', defaultColor: '#666666',
+    params: [
+      { id: 'dmgReduction', label: 'Damage taken %',    val: 50, min: 5, max: 100, step: 5 },
+      { id: 'slamDmg',      label: 'Contact dmg bonus', val: 6,  min: 0, max: 50, step: 1 },
+    ],
+    onTick(){},
+    onCollide(self, other) {
+      if (other.alive && other.shieldTimer <= 0 && self.params.slamDmg > 0) {
+        other.hp -= self.params.slamDmg;
+        other.flash = 8;
+        spawnDamage(other.x, other.y - other.r - 10, self.params.slamDmg, '#ff5566');
+        SFX.tankSlam();
+      }
+    },
+    draw(ctx, b) {
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r - 2, 0, Math.PI*2);
+      ctx.stroke();
+    }
+  },
+
+  shield: {
+    label: 'Shield', defaultColor: '#22aaff',
+    params: [
+      { id: 'shieldInterval', label: 'Shield every (sec)', val: 5, min: 1,   max: 20, step: 0.5 },
+      { id: 'shieldDuration', label: 'Shield lasts (sec)', val: 2, min: 0.5, max: 10, step: 0.5 },
+    ],
+    onTick(self) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.shieldTimer > 0) self.shieldTimer--;
+      if (self.cd <= 0) {
+        self.shieldTimer = self.params.shieldDuration * 60;
+        SFX.shieldUp();
+        self.cd = self.params.shieldInterval * 60;
+      }
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      if (b.shieldTimer > 0) {
+        ctx.strokeStyle = '#22aaff';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.5 + Math.sin(frame*0.3)*0.3;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r + 8, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+  },
+
+  speedster: {
+    label: 'Speedster', defaultColor: '#ffff44',
+    params: [
+      { id: 'dashInterval', label: 'Dash every (sec)', val: 2,  min: 0.5, max: 10, step: 0.1 },
+      { id: 'dashPower',    label: 'Dash power',       val: 14, min: 5,   max: 30, step: 1 },
+    ],
+    onTick(self, others) {
+      self.cd = (self.cd ?? 0) - 1;
+      if (self.cd <= 0) {
+        const target = others.find(o => o.alive);
+        if (target) {
+          const dx = target.x - self.x, dy = target.y - self.y;
+          const d = Math.hypot(dx, dy) || 1;
+          self.vx = dx/d * self.params.dashPower;
+          self.vy = dy/d * self.params.dashPower;
+          self.dashTrail = 20;
+          SFX.dash();
+        }
+        self.cd = self.params.dashInterval * 60;
+      }
+      if (self.dashTrail > 0) self.dashTrail--;
+    },
+    onCollide(){},
+    draw(ctx, b) {
+      if (b.dashTrail > 0) {
+        ctx.fillStyle = b.color;
+        ctx.globalAlpha = b.dashTrail / 20 * 0.5;
+        for (let i=1;i<5;i++) {
+          ctx.beginPath();
+          ctx.arc(b.x - b.vx*i*0.5, b.y - b.vy*i*0.5, b.r * (1 - i*0.15), 0, Math.PI*2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+  },
+
+  poison: {
+    label: 'Poisoner', defaultColor: '#88dd22',
+    params: [
+      { id: 'poisonDuration', label: 'Poison lasts (sec)', val: 4, min: 1, max: 20, step: 0.5 },
+      { id: 'poisonDPS',      label: 'Poison dmg/sec',     val: 8, min: 1, max: 100, step: 1 },
+    ],
+    onTick(){},
+    onCollide(self, other) {
+      if (other.alive && other.shieldTimer <= 0) {
+        other.poisoned = self.params.poisonDuration * 60;
+        other.poisonDPS = self.params.poisonDPS;
+        SFX.poisonHit();
+      }
+    },
+    draw(ctx, b) {
+      ctx.fillStyle = '#aaff44';
+      for (let i=0;i<3;i++) {
+        const a = frame*0.05 + i*2;
+        ctx.beginPath();
+        ctx.arc(b.x + Math.cos(a)*b.r*0.7, b.y + Math.sin(a)*b.r*0.7, 3, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+  },
+
+};
+
+// ===== UI POPULATION =====
+function populateDropdowns() {
+  for (const sel of [document.getElementById('cls1'), document.getElementById('cls2')]) {
+    sel.innerHTML = '';
+    for (const [key, def] of Object.entries(CLASSES)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = def.label;
+      sel.appendChild(opt);
+    }
+  }
+  document.getElementById('cls1').value = 'gunner';
+  document.getElementById('cls2').value = 'healer';
+}
+
+function buildParamsUI(slot, classKey) {
+  const def = CLASSES[classKey];
+  const container = document.getElementById('params' + slot);
+  container.innerHTML = '';
+  if (!def.params.length) return;
+  const h = document.createElement('div');
+  h.style.cssText = 'margin-top:8px; font-size:11px; color:#8af; font-weight:600;';
+  h.textContent = 'ABILITY';
+  container.appendChild(h);
+  for (const p of def.params) {
+    const row = document.createElement('div');
+    row.className = 'param-row';
+    const label = document.createElement('label');
+    label.textContent = p.label;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = p.min; input.max = p.max; input.step = p.step;
+    input.value = p.val;
+    input.dataset.paramId = p.id;
+    input.dataset.slot = slot;
+    row.appendChild(label);
+    row.appendChild(input);
+    container.appendChild(row);
+  }
+}
+
+function readParams(slot) {
+  const container = document.getElementById('params' + slot);
+  const out = {};
+  container.querySelectorAll('input[data-param-id]').forEach(el => {
+    out[el.dataset.paramId] = parseFloat(el.value);
   });
+  return out;
 }
 
 function readCfg() {
   cfg = {
-    mode: document.getElementById('mode').value,
+    cls1: document.getElementById('cls1').value,
+    cls2: document.getElementById('cls2').value,
     n1: document.getElementById('n1').value,
     n2: document.getElementById('n2').value,
     c1: document.getElementById('c1').value,
@@ -318,192 +980,272 @@ function readCfg() {
     spd: parseFloat(document.getElementById('spd').value),
     title: document.getElementById('title').value,
     soundOn: document.getElementById('soundOn').checked,
-    soundStyle: document.getElementById('soundStyle').value,
     vol: parseFloat(document.getElementById('vol').value),
-    pitchVar: parseFloat(document.getElementById('pitchVar').value),
+    p1: readParams(1),
+    p2: readParams(2),
   };
 }
 
-function makeBall(name, color, hp, x, y, vx, vy) {
+function makeBall(slot, classKey, name, color, hp, params, x, y, vx, vy) {
   return {
-    name, color, hp, maxHp: hp,
-    x, y, vx, vy,
-    r: 32,
-    alive: true,
-    flash: 0,         // white flash timer after a hit
+    slot, classKey, name, color, hp, maxHp: hp,
+    x, y, vx, vy, r: 30, alive: true,
+    flash: 0, cd: 0, params,
+    healPulse: 0, shieldTimer: 0, dashTrail: 0,
+    poisoned: 0, poisonDPS: 0, charging: false,
   };
 }
 
 function reset() {
   readCfg();
-  particles = [];
-  damageTexts = [];
-  winner = null;
-  winSoundPlayed = false;
-  frame = 0;
-  const ang1 = Math.random() * Math.PI * 2;
-  const ang2 = ang1 + Math.PI + (Math.random()-0.5)*0.6;
+  projectiles = []; webs = []; particles = []; damageTexts = [];
+  winner = null; winSoundPlayed = false; frame = 0;
+  // Pick angles in the upper-diagonal range so both balls have strong
+  // horizontal AND upward motion. Otherwise a ball aimed straight down
+  // with gravity on just thuds at the bottom of the arena.
+  // Ball 1: angle between 200° and 250° (down-left to up-left), then we
+  //   flip sign to launch up-right; Ball 2 mirrors.
+  function launchAngle(side) {
+    // 35° to 70° above horizontal, randomized
+    const up = (35 + Math.random()*35) * Math.PI/180;
+    return side === 1 ? -Math.PI + up : -up; // ball 1 goes up-left, ball 2 up-right
+    // -PI + up    =  up-left-ish (negative x, negative y)
+    // -up         =  up-right-ish (positive x, negative y)
+  }
+  const a1 = launchAngle(1);
+  const a2 = launchAngle(2);
   balls = [
-    makeBall(cfg.n1, cfg.c1, cfg.hp1,
-      arena.cx - 60, arena.cy,
-      Math.cos(ang1)*cfg.spd, Math.sin(ang1)*cfg.spd),
-    makeBall(cfg.n2, cfg.c2, cfg.hp2,
-      arena.cx + 60, arena.cy,
-      Math.cos(ang2)*cfg.spd, Math.sin(ang2)*cfg.spd),
+    makeBall(1, cfg.cls1, cfg.n1, cfg.c1, cfg.hp1, cfg.p1,
+      arena.cx - 70, arena.cy,
+      Math.cos(a1)*cfg.spd, Math.sin(a1)*cfg.spd),
+    makeBall(2, cfg.cls2, cfg.n2, cfg.c2, cfg.hp2, cfg.p2,
+      arena.cx + 70, arena.cy,
+      Math.cos(a2)*cfg.spd, Math.sin(a2)*cfg.spd),
   ];
   draw();
 }
 
-function spawnSparks(x, y, color) {
-  for (let i=0;i<14;i++){
+function spawnSparks(x, y, color, n=14) {
+  for (let i=0;i<n;i++){
     const a = Math.random()*Math.PI*2;
     const s = 2 + Math.random()*4;
-    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
-                     life: 30, color });
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 30, color });
   }
 }
-
-function spawnDamage(x, y, amount, color) {
-  damageTexts.push({ x, y, amount, color, life: 60, vy: -1.5 });
+function spawnDamage(x, y, text, color) {
+  damageTexts.push({ x, y, text: String(text), color, life: 60, vy: -1.5 });
 }
 
+// ===== MAIN LOOP =====
 function step() {
   if (!running) return;
   frame++;
 
-  // --- update balls ---
   for (const b of balls) {
     if (!b.alive) continue;
+    const def = CLASSES[b.classKey];
+    if (def && def.onTick) {
+      const others = balls.filter(o => o !== b && o.alive);
+      def.onTick(b, others);
+    }
+    if (b.poisoned > 0) {
+      b.poisoned--;
+      if (b.poisoned % 30 === 0 && b.shieldTimer <= 0) {
+        const dmg = Math.round(b.poisonDPS / 2);
+        b.hp -= dmg;
+        spawnDamage(b.x + (Math.random()-0.5)*20, b.y - b.r - 10, dmg, '#88ff22');
+      }
+    }
     b.vy += cfg.grav;
-    b.x += b.vx;
-    b.y += b.vy;
+
+    // --- minimum-speed floor ---
+    // If gravity is on and the ball settles into a slow back-and-forth
+    // at the bottom of the arena, it stops being entertaining. Force a
+    // minimum speed by nudging it whenever it drops below the threshold.
+    // We base the floor on the configured ball speed so a "slow" setup
+    // still feels slow but never freezes.
+    const minSpeed = Math.max(3, cfg.spd * 0.6);
+    const speed = Math.hypot(b.vx, b.vy);
+    if (speed < minSpeed) {
+      if (speed < 0.01) {
+        // dead stop — random kick
+        const a = Math.random() * Math.PI * 2;
+        b.vx = Math.cos(a) * minSpeed;
+        b.vy = Math.sin(a) * minSpeed;
+      } else {
+        // moving but too slow — scale velocity up to the floor
+        const k = minSpeed / speed;
+        b.vx *= k;
+        b.vy *= k;
+      }
+    }
+
+    let speedMul = 1;
+    let inWeb = false;
+    for (const w of webs) {
+      if (w.owner === b) continue;
+      const d = Math.hypot(b.x - w.x, b.y - w.y);
+      if (d < w.r) { speedMul = Math.min(speedMul, w.slow); inWeb = true; }
+    }
+    if (inWeb && frame % 30 === 0) SFX.webStick();
+    b.x += b.vx * speedMul;
+    b.y += b.vy * speedMul;
     if (b.flash > 0) b.flash--;
 
-    // Circle arena collision: bounce off the inside of the circle
-    const dx = b.x - arena.cx;
-    const dy = b.y - arena.cy;
+    // Arena collision
+    const dx = b.x - arena.cx, dy = b.y - arena.cy;
     const dist = Math.hypot(dx, dy);
     const maxD = arena.r - b.r;
     if (dist > maxD) {
-      // push back inside
-      const nx = dx / dist;
-      const ny = dy / dist;
-      b.x = arena.cx + nx * maxD;
-      b.y = arena.cy + ny * maxD;
-      // reflect velocity across the normal
-      const dot = b.vx * nx + b.vy * ny;
-      // play wall hit sound — intensity based on impact speed into wall
-      const impactSpeed = Math.abs(dot);
-      if (impactSpeed > 1.5) {
-        playHit(Math.min(1, impactSpeed / 14));
-      }
-      b.vx = (b.vx - 2 * dot * nx) * cfg.bounce;
-      b.vy = (b.vy - 2 * dot * ny) * cfg.bounce;
-      // tiny random nudge so it never settles
+      const nx = dx/dist, ny = dy/dist;
+      b.x = arena.cx + nx*maxD;
+      b.y = arena.cy + ny*maxD;
+      const dot = b.vx*nx + b.vy*ny;
+      const impact = Math.abs(dot);
+      if (impact > 1.5) SFX.hit(Math.min(1, impact/14));
+      b.vx = (b.vx - 2*dot*nx) * cfg.bounce;
+      b.vy = (b.vy - 2*dot*ny) * cfg.bounce;
       b.vx += (Math.random()-0.5)*0.4;
       b.vy += (Math.random()-0.5)*0.4;
     }
   }
 
-  // --- ball-vs-ball collision ---
-  if (balls.length === 2 && balls[0].alive && balls[1].alive) {
-    const a = balls[0], b = balls[1];
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const dist = Math.hypot(dx, dy);
-    const minD = a.r + b.r;
+  // Ball-vs-ball
+  for (let i=0;i<balls.length;i++) for (let j=i+1;j<balls.length;j++) {
+    const a = balls[i], b = balls[j];
+    if (!a.alive || !b.alive) continue;
+    const dx = b.x-a.x, dy = b.y-a.y, dist = Math.hypot(dx,dy), minD = a.r+b.r;
     if (dist < minD && dist > 0) {
       const nx = dx/dist, ny = dy/dist;
-      // separate so they don't overlap
       const overlap = minD - dist;
-      a.x -= nx * overlap/2;
-      a.y -= ny * overlap/2;
-      b.x += nx * overlap/2;
-      b.y += ny * overlap/2;
-      // elastic bounce (equal mass)
-      const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
-      const p = dvx*nx + dvy*ny;
-      if (p < 0) {
-        a.vx += p*nx; a.vy += p*ny;
-        b.vx -= p*nx; b.vy -= p*ny;
+      a.x -= nx*overlap/2; a.y -= ny*overlap/2;
+      b.x += nx*overlap/2; b.y += ny*overlap/2;
+      const dvx = b.vx-a.vx, dvy = b.vy-a.vy, p = dvx*nx+dvy*ny;
+      if (p < 0) { a.vx += p*nx; a.vy += p*ny; b.vx -= p*nx; b.vy -= p*ny; }
+      const relSpeed = Math.hypot(b.vx-a.vx, b.vy-a.vy);
+      SFX.hit(Math.min(1, relSpeed/16 + 0.3));
+      const baseDmg = 2 + Math.floor(Math.random()*4);
+      function applyDamage(victim, attacker, dmg) {
+        if (victim.shieldTimer > 0) {
+          SFX.shieldBlock();
+          spawnDamage(victim.x, victim.y-victim.r-10, 'BLOCK', '#22aaff');
+          return;
+        }
+        const cls = CLASSES[victim.classKey];
+        const final = cls.label === 'Tank'
+          ? Math.round(dmg * (victim.params.dmgReduction || 100)/100)
+          : dmg;
+        victim.hp -= final;
+        victim.flash = 8;
+        spawnDamage(victim.x, victim.y-victim.r-10, final, '#ff5566');
       }
-      // ball-vs-ball is usually the "big" hit — louder
-      const relSpeed = Math.hypot(b.vx - a.vx, b.vy - a.vy);
-      playHit(Math.min(1, relSpeed / 16 + 0.3));
-      onCollide(a, b, (a.x+b.x)/2, (a.y+b.y)/2);
+      applyDamage(a, b, baseDmg);
+      applyDamage(b, a, baseDmg);
+      CLASSES[a.classKey].onCollide(a, b);
+      CLASSES[b.classKey].onCollide(b, a);
     }
   }
 
-  // --- particles ---
-  for (const p of particles) {
-    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--;
+  // Projectiles
+  for (const pr of projectiles) {
+    if (pr.kind === 'bullet') {
+      pr.x += pr.vx; pr.y += pr.vy; pr.life--;
+      for (const b of balls) {
+        if (b === pr.owner || !b.alive) continue;
+        if (Math.hypot(b.x-pr.x, b.y-pr.y) < b.r + pr.r) {
+          if (b.shieldTimer > 0) {
+            SFX.shieldBlock();
+            spawnDamage(b.x, b.y-b.r-10, 'BLOCK', '#22aaff');
+          } else {
+            const cls = CLASSES[b.classKey];
+            const final = cls.label === 'Tank'
+              ? Math.round(pr.damage * (b.params.dmgReduction || 100)/100)
+              : pr.damage;
+            b.hp -= final;
+            b.flash = 8;
+            spawnDamage(b.x, b.y-b.r-10, final, '#ff5566');
+            SFX.bulletHit();
+            spawnSparks(pr.x, pr.y, pr.color, 8);
+          }
+          pr.life = 0;
+        }
+      }
+      if (Math.hypot(pr.x-arena.cx, pr.y-arena.cy) > arena.r) pr.life = 0;
+    }
+    else if (pr.kind === 'bomb') {
+      pr.vy += cfg.grav * 0.7;
+      pr.x += pr.vx; pr.y += pr.vy;
+      const dx = pr.x - arena.cx, dy = pr.y - arena.cy, d = Math.hypot(dx,dy);
+      if (d > arena.r - pr.r) {
+        const nx = dx/d, ny = dy/d;
+        pr.x = arena.cx + nx*(arena.r-pr.r);
+        pr.y = arena.cy + ny*(arena.r-pr.r);
+        const dot = pr.vx*nx + pr.vy*ny;
+        pr.vx = (pr.vx - 2*dot*nx) * 0.6;
+        pr.vy = (pr.vy - 2*dot*ny) * 0.6;
+      }
+      pr.fuse--;
+      if (pr.fuse <= 0) {
+        SFX.explosion();
+        spawnSparks(pr.x, pr.y, '#ff6622', 30);
+        for (const b of balls) {
+          if (!b.alive) continue;
+          const dd = Math.hypot(b.x-pr.x, b.y-pr.y);
+          if (dd < pr.blast) {
+            const falloff = 1 - dd/pr.blast;
+            if (b.shieldTimer > 0) {
+              SFX.shieldBlock();
+            } else {
+              const cls = CLASSES[b.classKey];
+              const raw = Math.round(pr.damage * falloff);
+              const final = cls.label === 'Tank'
+                ? Math.round(raw * (b.params.dmgReduction || 100)/100)
+                : raw;
+              if (final > 0) {
+                b.hp -= final;
+                b.flash = 8;
+                spawnDamage(b.x, b.y-b.r-10, final, '#ff5566');
+              }
+            }
+            const kdx = b.x-pr.x, kdy = b.y-pr.y, kd = Math.hypot(kdx,kdy)||1;
+            b.vx += kdx/kd * falloff * 8;
+            b.vy += kdy/kd * falloff * 8;
+          }
+        }
+        pr.life = 0;
+      } else pr.life = 999;
+    }
   }
-  particles = particles.filter(p => p.life > 0);
+  projectiles = projectiles.filter(p => p.life > 0);
 
-  // --- damage texts ---
-  for (const d of damageTexts) {
-    d.y += d.vy; d.life--;
-  }
+  for (const w of webs) w.life--;
+  webs = webs.filter(w => w.life > 0);
+
+  for (const b of balls) if (b.hp <= 0) b.alive = false;
+  const alive = balls.filter(b => b.alive);
+  if (alive.length === 1 && !winner) winner = alive[0];
+  else if (alive.length === 0 && !winner) winner = balls.reduce((a,b) => a.hp > b.hp ? a : b);
+  if (winner) running = false;
+
+  for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--; }
+  particles = particles.filter(p => p.life > 0);
+  for (const d of damageTexts) { d.y += d.vy; d.life--; }
   damageTexts = damageTexts.filter(d => d.life > 0);
 
   draw();
   requestAnimationFrame(step);
 }
 
-function onCollide(a, b, x, y) {
-  // pick a "winner" of this hit for grow/shrink modes
-  if (cfg.mode === 'grow') {
-    // The one moving faster wins this exchange
-    const sa = Math.hypot(a.vx, a.vy);
-    const sb = Math.hypot(b.vx, b.vy);
-    const w = sa > sb ? a : b;
-    const l = w === a ? b : a;
-    w.r = Math.min(w.r + 1.5, arena.r - 20);
-    l.r = Math.max(l.r - 1.0, 10);
-    spawnSparks(x, y, w.color);
-    if (l.r <= 11) { l.alive = false; winner = w; running = false; }
-  }
-  else if (cfg.mode === 'shrink') {
-    // Both shrink slightly; smaller dies first
-    a.r = Math.max(a.r - 0.6, 8);
-    b.r = Math.max(b.r - 0.6, 8);
-    spawnSparks(x, y, '#fff');
-    if (a.r <= 9 && b.r <= 9) {
-      winner = a.r >= b.r ? a : b;
-      (a.r < b.r ? a : b).alive = false;
-      running = false;
-    } else if (a.r <= 9) { a.alive = false; winner = b; running = false; }
-    else if (b.r <= 9) { b.alive = false; winner = a; running = false; }
-  }
-  else if (cfg.mode === 'battle') {
-    // Each takes 1-5 damage, larger if collision is fast
-    const speed = Math.hypot(a.vx-b.vx, a.vy-b.vy);
-    const dmgA = Math.max(1, Math.round(speed * 0.4 + Math.random()*3));
-    const dmgB = Math.max(1, Math.round(speed * 0.4 + Math.random()*3));
-    a.hp -= dmgA; b.hp -= dmgB;
-    a.flash = 8; b.flash = 8;
-    spawnDamage(a.x, a.y - a.r - 10, dmgA, '#ff5566');
-    spawnDamage(b.x, b.y - b.r - 10, dmgB, '#ff5566');
-    spawnSparks(x, y, '#fff');
-    if (a.hp <= 0 && b.hp <= 0) {
-      winner = a.hp > b.hp ? a : b;
-      running = false;
-    } else if (a.hp <= 0) { a.alive = false; winner = b; running = false; }
-    else if (b.hp <= 0) { b.alive = false; winner = a; running = false; }
-  }
-}
-
+// ===== DRAW =====
 function draw() {
-  // background
   ctx.fillStyle = cfg.bg;
   ctx.fillRect(0, 0, W, H);
 
-  // title at top
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.font = 'bold 36px -apple-system, sans-serif';
   wrapText(cfg.title, W/2, 90, W-80, 42);
 
-  // arena background ring
   ctx.beginPath();
   ctx.arc(arena.cx, arena.cy, arena.r, 0, Math.PI*2);
   ctx.fillStyle = cfg.arena;
@@ -512,13 +1254,35 @@ function draw() {
   ctx.strokeStyle = '#444';
   ctx.stroke();
 
-  // HP bars on top (battle mode)
-  if (cfg.mode === 'battle') {
-    drawHpBar(balls[0], 40, arena.cy + arena.r + 30);
-    drawHpBar(balls[1], 40, arena.cy + arena.r + 75);
+  // webs under everything
+  for (const w of webs) {
+    const alpha = w.life / w.maxLife * 0.5;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = w.color;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    for (let i=0;i<8;i++){
+      const a = (i/8)*Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(w.x, w.y);
+      ctx.lineTo(w.x + Math.cos(a)*w.r, w.y + Math.sin(a)*w.r);
+      ctx.stroke();
+    }
+    // concentric rings
+    for (let i=1;i<=3;i++){
+      ctx.beginPath();
+      ctx.arc(w.x, w.y, w.r * i/4, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
-  // particles
+  drawHpBar(balls[0], 40, arena.cy + arena.r + 30);
+  drawHpBar(balls[1], 40, arena.cy + arena.r + 80);
+
   for (const p of particles) {
     ctx.globalAlpha = p.life / 30;
     ctx.fillStyle = p.color;
@@ -528,10 +1292,34 @@ function draw() {
   }
   ctx.globalAlpha = 1;
 
-  // balls
+  for (const pr of projectiles) {
+    if (pr.kind === 'bullet') {
+      ctx.fillStyle = pr.color;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI*2);
+      ctx.fill();
+      if (pr.big) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    } else if (pr.kind === 'bomb') {
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r, 0, Math.PI*2);
+      ctx.fill();
+      const pulse = Math.sin(frame * (0.2 + (1 - pr.fuse/60)*0.5)) > 0;
+      if (pulse) {
+        ctx.fillStyle = '#ff6622';
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y - pr.r - 3, 3, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
   for (const b of balls) {
     if (!b.alive) continue;
-    // glow
     const grd = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r*1.8);
     grd.addColorStop(0, b.color + 'cc');
     grd.addColorStop(1, b.color + '00');
@@ -539,54 +1327,62 @@ function draw() {
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r*1.8, 0, Math.PI*2);
     ctx.fill();
-    // body
     ctx.fillStyle = b.flash > 0 ? '#fff' : b.color;
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
     ctx.fill();
-    // HP number on ball in battle mode
-    if (cfg.mode === 'battle') {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 22px -apple-system, sans-serif';
-      ctx.fillText(Math.max(0,b.hp), b.x, b.y + 8);
+    CLASSES[b.classKey].draw(ctx, b);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.max(0, b.hp), b.x, b.y + 7);
+    if (b.poisoned > 0) {
+      ctx.strokeStyle = '#88ff22';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r+3, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
   }
 
-  // damage texts
   for (const d of damageTexts) {
     ctx.globalAlpha = Math.min(1, d.life / 30);
     ctx.fillStyle = d.color;
-    ctx.font = 'bold 24px -apple-system, sans-serif';
-    ctx.fillText('-' + d.amount, d.x, d.y);
+    ctx.font = 'bold 22px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.text, d.x, d.y);
   }
   ctx.globalAlpha = 1;
 
-  // winner banner
   if (winner) {
-    if (!winSoundPlayed) { playWin(); winSoundPlayed = true; }
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    if (!winSoundPlayed) { SFX.win(); winSoundPlayed = true; }
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, H/2 - 80, W, 160);
     ctx.fillStyle = winner.color;
-    ctx.font = 'bold 64px -apple-system, sans-serif';
-    ctx.fillText(winner.name.toUpperCase() + ' WINS!', W/2, H/2 + 24);
+    ctx.font = 'bold 56px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(winner.name.toUpperCase() + ' WINS!', W/2, H/2 + 22);
   }
 }
 
 function drawHpBar(b, x, y) {
   if (!b) return;
   const w = W - 80;
-  ctx.fillStyle = '#333';
-  ctx.fillRect(x, y, w, 28);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(x, y, w, 32);
   const pct = Math.max(0, b.hp / b.maxHp);
   ctx.fillStyle = b.color;
-  ctx.fillRect(x, y, w * pct, 28);
+  ctx.fillRect(x, y, w * pct, 32);
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 2;
-  ctx.strokeRect(x, y, w, 28);
+  ctx.strokeRect(x, y, w, 32);
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'left';
   ctx.font = 'bold 18px -apple-system, sans-serif';
-  ctx.fillText(b.name + '  ' + Math.max(0, b.hp) + '/' + b.maxHp, x + 8, y + 20);
+  const cls = CLASSES[b.classKey]?.label || '';
+  ctx.fillText(`${b.name} (${cls})  ${Math.max(0,b.hp)}/${b.maxHp}`, x + 8, y + 22);
   ctx.textAlign = 'center';
 }
 
@@ -597,17 +1393,29 @@ function wrapText(text, x, y, maxWidth, lineHeight) {
   for (const w of words) {
     const test = line ? line + ' ' + w : w;
     if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = w;
+      lines.push(line); line = w;
     } else line = test;
   }
   if (line) lines.push(line);
   lines.forEach((ln, i) => ctx.fillText(ln, x, y + i*lineHeight));
 }
 
-// --- UI wiring ---
+// ===== UI WIRING =====
+populateDropdowns();
+buildParamsUI(1, document.getElementById('cls1').value);
+buildParamsUI(2, document.getElementById('cls2').value);
+
+for (const slot of [1, 2]) {
+  const sel = document.getElementById('cls' + slot);
+  sel.addEventListener('change', () => {
+    buildParamsUI(slot, sel.value);
+    document.getElementById('c' + slot).value = CLASSES[sel.value].defaultColor;
+    if (!running) reset();
+  });
+}
+
 document.getElementById('start').onclick = () => {
-  ensureAudio();   // must be on a user gesture
+  ensureAudio();
   if (winner) reset();
   readCfg();
   running = true;
@@ -615,21 +1423,19 @@ document.getElementById('start').onclick = () => {
 };
 document.getElementById('reset').onclick = () => { running = false; reset(); };
 
-// live updates for sliders
-for (const id of ['grav','bounce','spd','vol','pitchVar']) {
+for (const id of ['grav','bounce','spd','vol']) {
   const el = document.getElementById(id);
-  if (!el) continue;
   el.addEventListener('input', () => {
-    const valEl = document.getElementById(id+'Val');
-    if (valEl) valEl.textContent = el.value;
+    const v = document.getElementById(id+'Val'); if (v) v.textContent = el.value;
     readCfg();
   });
 }
-// any other input changes -> re-read config
 document.querySelectorAll('#controls input, #controls select').forEach(el => {
-  el.addEventListener('change', () => { readCfg(); if(!running) draw(); });
+  el.addEventListener('change', () => { readCfg(); if (!running) draw(); });
 });
 
+document.getElementById('c1').value = CLASSES[document.getElementById('cls1').value].defaultColor;
+document.getElementById('c2').value = CLASSES[document.getElementById('cls2').value].defaultColor;
 reset();
 </script>
 </body>
