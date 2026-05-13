@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Physics Shorts Engine</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a1a;
+    color: #eee;
+    font-family: -apple-system, system-ui, sans-serif;
+    display: flex;
+    min-height: 100vh;
+  }
+  #controls {
+    width: 340px;
+    padding: 16px;
+    background: #222;
+    overflow-y: auto;
+    border-right: 1px solid #333;
+  }
+  #controls h2 { font-size: 14px; margin: 14px 0 6px; color: #8af; text-transform: uppercase; letter-spacing: 1px; }
+  #controls h2:first-child { margin-top: 0; }
+  #controls label { display: block; font-size: 12px; margin: 8px 0 2px; color: #bbb; }
+  #controls input, #controls select, #controls button {
+    width: 100%;
+    padding: 6px 8px;
+    background: #333;
+    color: #eee;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  #controls button {
+    cursor: pointer;
+    background: #2a6;
+    border-color: #2a6;
+    margin-top: 6px;
+    font-weight: 600;
+  }
+  #controls button:hover { background: #3b7; }
+  #controls button.alt { background: #555; border-color: #555; }
+  #controls button.alt:hover { background: #666; }
+  .row { display: flex; gap: 6px; }
+  .row > * { flex: 1; }
+  #stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0a;
+  }
+  canvas {
+    background: #000;
+    display: block;
+    /* 9:16 aspect ratio for Shorts/Reels/TikTok */
+    width: min(calc(100vh - 32px) * 9 / 16, calc(100vw - 372px));
+    aspect-ratio: 9 / 16;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(0,0,0,0.6);
+  }
+  .hint { font-size: 11px; color: #888; margin-top: 4px; line-height: 1.4; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+  fieldset { border: 1px solid #333; padding: 8px; border-radius: 4px; margin-top: 8px; }
+  legend { font-size: 11px; padding: 0 4px; color: #8af; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <h2>Mode</h2>
+  <select id="mode">
+    <option value="grow">Collision Grow (Ball Wins)</option>
+    <option value="shrink">Collision Shrink (Last Standing)</option>
+    <option value="battle">Battle (HP & Damage)</option>
+  </select>
+
+  <fieldset>
+    <legend>Ball 1</legend>
+    <label>Name</label>
+    <input type="text" id="n1" value="Red">
+    <label>Color</label>
+    <input type="color" id="c1" value="#ff3344">
+    <label>Starting HP (battle mode)</label>
+    <input type="number" id="hp1" value="200" min="1">
+  </fieldset>
+
+  <fieldset>
+    <legend>Ball 2</legend>
+    <label>Name</label>
+    <input type="text" id="n2" value="Green">
+    <label>Color</label>
+    <input type="color" id="c2" value="#33dd55">
+    <label>Starting HP (battle mode)</label>
+    <input type="number" id="hp2" value="200" min="1">
+  </fieldset>
+
+  <h2>Arena</h2>
+  <label>Arena Color</label>
+  <input type="color" id="arenaColor" value="#222222">
+  <label>Background</label>
+  <input type="color" id="bgColor" value="#000000">
+
+  <h2>Physics</h2>
+  <label>Gravity: <span id="gravVal">0.25</span></label>
+  <input type="range" id="grav" min="0" max="1" step="0.01" value="0.25">
+  <label>Bounciness: <span id="bounceVal">1.0</span></label>
+  <input type="range" id="bounce" min="0.5" max="1.2" step="0.01" value="1.0">
+  <label>Ball Speed: <span id="spdVal">8</span></label>
+  <input type="range" id="spd" min="2" max="20" step="0.5" value="8">
+
+  <h2>Title Text</h2>
+  <input type="text" id="title" value="Every time they collide, they grow!">
+
+  <h2>Sound</h2>
+  <label><input type="checkbox" id="soundOn" checked style="width:auto;margin-right:6px"> Enable impact sounds</label>
+  <label>Sound Style</label>
+  <select id="soundStyle">
+    <option value="pop">Pop (soft bubble)</option>
+    <option value="thud" selected>Thud (heavy hit)</option>
+    <option value="ping">Ping (high tone)</option>
+    <option value="click">Click (sharp)</option>
+    <option value="boom">Boom (deep)</option>
+  </select>
+  <label>Volume: <span id="volVal">0.5</span></label>
+  <input type="range" id="vol" min="0" max="1" step="0.05" value="0.5">
+  <label>Pitch Variation: <span id="pitchVal">0.3</span></label>
+  <input type="range" id="pitchVar" min="0" max="1" step="0.05" value="0.3">
+  <p class="hint">Sounds get higher-pitched for harder hits. OBS captures them automatically via Window or Application Audio Capture.</p>
+
+  <h2>Controls</h2>
+  <div class="row">
+    <button id="start">▶ Start</button>
+    <button id="reset" class="alt">↻ Reset</button>
+  </div>
+  <p class="hint">Press <b>Start</b>, then record this window in OBS using a Window Capture. The canvas is locked to a 9:16 ratio so it's ready for Shorts / TikTok / Reels.</p>
+
+  <h2>Tips</h2>
+  <p class="hint">
+    • Use distinct colors for the two balls so viewers can pick a side.<br>
+    • Keep videos under 60s for Shorts.<br>
+    • Add a "which one will win?" question on screen.<br>
+    • Change mode + names + title for each video — same engine, infinite content.
+  </p>
+</div>
+
+<div id="stage">
+  <canvas id="cv" width="540" height="960"></canvas>
+</div>
+
+<script>
+/* ============================================================
+   PHYSICS SHORTS ENGINE
+   - Mode 1 (grow):    on collision the winning ball grows
+   - Mode 2 (shrink):  on collision the loser shrinks until gone
+   - Mode 3 (battle):  balls take HP damage on each collision,
+                       with damage numbers floating up
+   ============================================================ */
+
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+
+// Arena geometry (circle in center, like the reference videos)
+const arena = { cx: W/2, cy: H/2 + 40, r: 230 };
+
+// State
+let balls = [];
+let particles = [];   // little spark particles on impact
+let damageTexts = []; // floating damage numbers (battle mode)
+let running = false;
+let winner = null;
+let winSoundPlayed = false;
+let frame = 0;
+
+// Settings (read from UI)
+let cfg = {};
+
+/* ============================================================
+   SOUND ENGINE — synthesizes impact sounds with Web Audio API
+   No external files, no licensing issues.
+   ============================================================ */
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // browsers suspend audio until a user gesture; resume on demand
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// intensity 0..1 — louder/higher pitch for harder collisions
+function playHit(intensity = 0.5) {
+  if (!cfg.soundOn || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  const vol = cfg.vol;
+  const variation = (Math.random() - 0.5) * 2 * cfg.pitchVar; // -pitchVar..+pitchVar
+  const style = cfg.soundStyle;
+
+  // Each style is a different synth recipe
+  if (style === 'pop') {
+    // sine sweep down — soft bubble pop
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    const base = 600 * Math.pow(2, variation);
+    osc.frequency.setValueAtTime(base * (1 + intensity), t);
+    osc.frequency.exponentialRampToValueAtTime(base * 0.4, t + 0.12);
+    gain.gain.setValueAtTime(vol * (0.4 + intensity * 0.6), t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.16);
+  }
+  else if (style === 'thud') {
+    // low sine + filtered noise — heavy ball-hit
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    const base = 140 * Math.pow(2, variation * 0.5);
+    osc.frequency.setValueAtTime(base * (1 + intensity * 0.6), t);
+    osc.frequency.exponentialRampToValueAtTime(base * 0.5, t + 0.18);
+    gain.gain.setValueAtTime(vol * (0.5 + intensity * 0.5), t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.24);
+    // add a noise click on top
+    addNoiseBurst(t, 0.04, vol * 0.3 * intensity, 2000);
+  }
+  else if (style === 'ping') {
+    // bright triangle/sine — bell-ish
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    const base = 1100 * Math.pow(2, variation);
+    osc.frequency.setValueAtTime(base * (1 + intensity * 0.4), t);
+    gain.gain.setValueAtTime(vol * (0.3 + intensity * 0.5), t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.26);
+  }
+  else if (style === 'click') {
+    // very short sharp click — table tennis vibe
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    const base = 1800 * Math.pow(2, variation);
+    osc.frequency.setValueAtTime(base * (1 + intensity * 0.3), t);
+    gain.gain.setValueAtTime(vol * (0.25 + intensity * 0.35), t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.05);
+  }
+  else if (style === 'boom') {
+    // deep sub thump with longer tail
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    const base = 70 * Math.pow(2, variation * 0.4);
+    osc.frequency.setValueAtTime(base * 2.5, t);
+    osc.frequency.exponentialRampToValueAtTime(base, t + 0.3);
+    gain.gain.setValueAtTime(vol * (0.6 + intensity * 0.4), t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.42);
+  }
+}
+
+// Short filtered-noise burst — used to add a "click" to thud
+function addNoiseBurst(t, dur, vol, cutoff) {
+  const bufSize = Math.floor(audioCtx.sampleRate * dur);
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = cutoff;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(filter).connect(gain).connect(audioCtx.destination);
+  src.start(t);
+}
+
+// Played once when somebody wins
+function playWin() {
+  if (!cfg.soundOn || !audioCtx) return;
+  const t = audioCtx.currentTime;
+  // three rising notes
+  [523, 659, 784].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, t + i*0.12);
+    gain.gain.linearRampToValueAtTime(cfg.vol * 0.4, t + i*0.12 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + i*0.12 + 0.3);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t + i*0.12);
+    osc.stop(t + i*0.12 + 0.32);
+  });
+}
+
+function readCfg() {
+  cfg = {
+    mode: document.getElementById('mode').value,
+    n1: document.getElementById('n1').value,
+    n2: document.getElementById('n2').value,
+    c1: document.getElementById('c1').value,
+    c2: document.getElementById('c2').value,
+    hp1: parseInt(document.getElementById('hp1').value),
+    hp2: parseInt(document.getElementById('hp2').value),
+    arena: document.getElementById('arenaColor').value,
+    bg: document.getElementById('bgColor').value,
+    grav: parseFloat(document.getElementById('grav').value),
+    bounce: parseFloat(document.getElementById('bounce').value),
+    spd: parseFloat(document.getElementById('spd').value),
+    title: document.getElementById('title').value,
+    soundOn: document.getElementById('soundOn').checked,
+    soundStyle: document.getElementById('soundStyle').value,
+    vol: parseFloat(document.getElementById('vol').value),
+    pitchVar: parseFloat(document.getElementById('pitchVar').value),
+  };
+}
+
+function makeBall(name, color, hp, x, y, vx, vy) {
+  return {
+    name, color, hp, maxHp: hp,
+    x, y, vx, vy,
+    r: 32,
+    alive: true,
+    flash: 0,         // white flash timer after a hit
+  };
+}
+
+function reset() {
+  readCfg();
+  particles = [];
+  damageTexts = [];
+  winner = null;
+  winSoundPlayed = false;
+  frame = 0;
+  const ang1 = Math.random() * Math.PI * 2;
+  const ang2 = ang1 + Math.PI + (Math.random()-0.5)*0.6;
+  balls = [
+    makeBall(cfg.n1, cfg.c1, cfg.hp1,
+      arena.cx - 60, arena.cy,
+      Math.cos(ang1)*cfg.spd, Math.sin(ang1)*cfg.spd),
+    makeBall(cfg.n2, cfg.c2, cfg.hp2,
+      arena.cx + 60, arena.cy,
+      Math.cos(ang2)*cfg.spd, Math.sin(ang2)*cfg.spd),
+  ];
+  draw();
+}
+
+function spawnSparks(x, y, color) {
+  for (let i=0;i<14;i++){
+    const a = Math.random()*Math.PI*2;
+    const s = 2 + Math.random()*4;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+                     life: 30, color });
+  }
+}
+
+function spawnDamage(x, y, amount, color) {
+  damageTexts.push({ x, y, amount, color, life: 60, vy: -1.5 });
+}
+
+function step() {
+  if (!running) return;
+  frame++;
+
+  // --- update balls ---
+  for (const b of balls) {
+    if (!b.alive) continue;
+    b.vy += cfg.grav;
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.flash > 0) b.flash--;
+
+    // Circle arena collision: bounce off the inside of the circle
+    const dx = b.x - arena.cx;
+    const dy = b.y - arena.cy;
+    const dist = Math.hypot(dx, dy);
+    const maxD = arena.r - b.r;
+    if (dist > maxD) {
+      // push back inside
+      const nx = dx / dist;
+      const ny = dy / dist;
+      b.x = arena.cx + nx * maxD;
+      b.y = arena.cy + ny * maxD;
+      // reflect velocity across the normal
+      const dot = b.vx * nx + b.vy * ny;
+      // play wall hit sound — intensity based on impact speed into wall
+      const impactSpeed = Math.abs(dot);
+      if (impactSpeed > 1.5) {
+        playHit(Math.min(1, impactSpeed / 14));
+      }
+      b.vx = (b.vx - 2 * dot * nx) * cfg.bounce;
+      b.vy = (b.vy - 2 * dot * ny) * cfg.bounce;
+      // tiny random nudge so it never settles
+      b.vx += (Math.random()-0.5)*0.4;
+      b.vy += (Math.random()-0.5)*0.4;
+    }
+  }
+
+  // --- ball-vs-ball collision ---
+  if (balls.length === 2 && balls[0].alive && balls[1].alive) {
+    const a = balls[0], b = balls[1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy);
+    const minD = a.r + b.r;
+    if (dist < minD && dist > 0) {
+      const nx = dx/dist, ny = dy/dist;
+      // separate so they don't overlap
+      const overlap = minD - dist;
+      a.x -= nx * overlap/2;
+      a.y -= ny * overlap/2;
+      b.x += nx * overlap/2;
+      b.y += ny * overlap/2;
+      // elastic bounce (equal mass)
+      const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
+      const p = dvx*nx + dvy*ny;
+      if (p < 0) {
+        a.vx += p*nx; a.vy += p*ny;
+        b.vx -= p*nx; b.vy -= p*ny;
+      }
+      // ball-vs-ball is usually the "big" hit — louder
+      const relSpeed = Math.hypot(b.vx - a.vx, b.vy - a.vy);
+      playHit(Math.min(1, relSpeed / 16 + 0.3));
+      onCollide(a, b, (a.x+b.x)/2, (a.y+b.y)/2);
+    }
+  }
+
+  // --- particles ---
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life--;
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  // --- damage texts ---
+  for (const d of damageTexts) {
+    d.y += d.vy; d.life--;
+  }
+  damageTexts = damageTexts.filter(d => d.life > 0);
+
+  draw();
+  requestAnimationFrame(step);
+}
+
+function onCollide(a, b, x, y) {
+  // pick a "winner" of this hit for grow/shrink modes
+  if (cfg.mode === 'grow') {
+    // The one moving faster wins this exchange
+    const sa = Math.hypot(a.vx, a.vy);
+    const sb = Math.hypot(b.vx, b.vy);
+    const w = sa > sb ? a : b;
+    const l = w === a ? b : a;
+    w.r = Math.min(w.r + 1.5, arena.r - 20);
+    l.r = Math.max(l.r - 1.0, 10);
+    spawnSparks(x, y, w.color);
+    if (l.r <= 11) { l.alive = false; winner = w; running = false; }
+  }
+  else if (cfg.mode === 'shrink') {
+    // Both shrink slightly; smaller dies first
+    a.r = Math.max(a.r - 0.6, 8);
+    b.r = Math.max(b.r - 0.6, 8);
+    spawnSparks(x, y, '#fff');
+    if (a.r <= 9 && b.r <= 9) {
+      winner = a.r >= b.r ? a : b;
+      (a.r < b.r ? a : b).alive = false;
+      running = false;
+    } else if (a.r <= 9) { a.alive = false; winner = b; running = false; }
+    else if (b.r <= 9) { b.alive = false; winner = a; running = false; }
+  }
+  else if (cfg.mode === 'battle') {
+    // Each takes 1-5 damage, larger if collision is fast
+    const speed = Math.hypot(a.vx-b.vx, a.vy-b.vy);
+    const dmgA = Math.max(1, Math.round(speed * 0.4 + Math.random()*3));
+    const dmgB = Math.max(1, Math.round(speed * 0.4 + Math.random()*3));
+    a.hp -= dmgA; b.hp -= dmgB;
+    a.flash = 8; b.flash = 8;
+    spawnDamage(a.x, a.y - a.r - 10, dmgA, '#ff5566');
+    spawnDamage(b.x, b.y - b.r - 10, dmgB, '#ff5566');
+    spawnSparks(x, y, '#fff');
+    if (a.hp <= 0 && b.hp <= 0) {
+      winner = a.hp > b.hp ? a : b;
+      running = false;
+    } else if (a.hp <= 0) { a.alive = false; winner = b; running = false; }
+    else if (b.hp <= 0) { b.alive = false; winner = a; running = false; }
+  }
+}
+
+function draw() {
+  // background
+  ctx.fillStyle = cfg.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // title at top
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 36px -apple-system, sans-serif';
+  wrapText(cfg.title, W/2, 90, W-80, 42);
+
+  // arena background ring
+  ctx.beginPath();
+  ctx.arc(arena.cx, arena.cy, arena.r, 0, Math.PI*2);
+  ctx.fillStyle = cfg.arena;
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#444';
+  ctx.stroke();
+
+  // HP bars on top (battle mode)
+  if (cfg.mode === 'battle') {
+    drawHpBar(balls[0], 40, arena.cy + arena.r + 30);
+    drawHpBar(balls[1], 40, arena.cy + arena.r + 75);
+  }
+
+  // particles
+  for (const p of particles) {
+    ctx.globalAlpha = p.life / 30;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // balls
+  for (const b of balls) {
+    if (!b.alive) continue;
+    // glow
+    const grd = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r*1.8);
+    grd.addColorStop(0, b.color + 'cc');
+    grd.addColorStop(1, b.color + '00');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r*1.8, 0, Math.PI*2);
+    ctx.fill();
+    // body
+    ctx.fillStyle = b.flash > 0 ? '#fff' : b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    ctx.fill();
+    // HP number on ball in battle mode
+    if (cfg.mode === 'battle') {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 22px -apple-system, sans-serif';
+      ctx.fillText(Math.max(0,b.hp), b.x, b.y + 8);
+    }
+  }
+
+  // damage texts
+  for (const d of damageTexts) {
+    ctx.globalAlpha = Math.min(1, d.life / 30);
+    ctx.fillStyle = d.color;
+    ctx.font = 'bold 24px -apple-system, sans-serif';
+    ctx.fillText('-' + d.amount, d.x, d.y);
+  }
+  ctx.globalAlpha = 1;
+
+  // winner banner
+  if (winner) {
+    if (!winSoundPlayed) { playWin(); winSoundPlayed = true; }
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, H/2 - 80, W, 160);
+    ctx.fillStyle = winner.color;
+    ctx.font = 'bold 64px -apple-system, sans-serif';
+    ctx.fillText(winner.name.toUpperCase() + ' WINS!', W/2, H/2 + 24);
+  }
+}
+
+function drawHpBar(b, x, y) {
+  if (!b) return;
+  const w = W - 80;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(x, y, w, 28);
+  const pct = Math.max(0, b.hp / b.maxHp);
+  ctx.fillStyle = b.color;
+  ctx.fillRect(x, y, w * pct, 28);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, 28);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 18px -apple-system, sans-serif';
+  ctx.fillText(b.name + '  ' + Math.max(0, b.hp) + '/' + b.maxHp, x + 8, y + 20);
+  ctx.textAlign = 'center';
+}
+
+function wrapText(text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '';
+  const lines = [];
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = w;
+    } else line = test;
+  }
+  if (line) lines.push(line);
+  lines.forEach((ln, i) => ctx.fillText(ln, x, y + i*lineHeight));
+}
+
+// --- UI wiring ---
+document.getElementById('start').onclick = () => {
+  ensureAudio();   // must be on a user gesture
+  if (winner) reset();
+  readCfg();
+  running = true;
+  requestAnimationFrame(step);
+};
+document.getElementById('reset').onclick = () => { running = false; reset(); };
+
+// live updates for sliders
+for (const id of ['grav','bounce','spd','vol','pitchVar']) {
+  const el = document.getElementById(id);
+  if (!el) continue;
+  el.addEventListener('input', () => {
+    const valEl = document.getElementById(id+'Val');
+    if (valEl) valEl.textContent = el.value;
+    readCfg();
+  });
+}
+// any other input changes -> re-read config
+document.querySelectorAll('#controls input, #controls select').forEach(el => {
+  el.addEventListener('change', () => { readCfg(); if(!running) draw(); });
+});
+
+reset();
+</script>
+</body>
+</html>
