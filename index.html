@@ -93,6 +93,16 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
 @keyframes dp{0%,100%{opacity:.25;transform:scale(1);}50%{opacity:.85;transform:scale(1.4);}}
 .soon-note{font-size:.5rem;color:#1a0028;letter-spacing:.12em;text-align:center;line-height:1.7;padding:0 .6rem;}
 
+#download-btn{
+  display:inline-block;margin-top:.6rem;
+  background:#0a1a00;color:#39ff14;
+  border:1px solid #1a4400;
+  font-family:'Share Tech Mono',monospace;font-size:.7rem;letter-spacing:.18em;
+  padding:.5rem 1.4rem;text-decoration:none;
+  transition:background .15s,border-color .15s,box-shadow .15s;
+}
+#download-btn:hover{background:#0a2a00;border-color:#39ff14;box-shadow:0 0 14px #39ff1444;color:#88ff44;}
+
 /* Suggest button */
 .suggest-wrap{text-align:center;margin-top:1rem;}
 #suggest-btn{
@@ -356,6 +366,10 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
       💡 SUGGEST A GAME
     </a>
     <div class="suggest-note">Got an idea? Let us know what to build next.</div>
+    <a id="download-btn" href="physics.html" download="physics.html">
+      ⬇ DOWNLOAD PHYSICS BATTLE
+    </a>
+    <div class="suggest-note">Download and run locally in your browser.</div>
   </div>
 </div>
 
