@@ -117,6 +117,29 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
 .suggest-note{font-size:.5rem;color:#2a0040;letter-spacing:.12em;margin-top:.4rem;}
 
 .section-label{font-size:.6rem;letter-spacing:.3em;color:#2a0040;margin-top:1.5rem;text-align:center;}
+.gold-label{color:#c9a227;text-shadow:0 0 12px #ffd75e55;font-size:.7rem;}
+.gold-card{border-color:#8a6a1a !important;box-shadow:0 0 14px #ffd75e22;}
+.gold-card:hover{border-color:#ffd75e !important;box-shadow:0 0 22px #ffd75e55 !important;}
+.gold-card .card-name{color:#ffd75e;}
+.gold-card .card-play{border-color:#8a6a1a;color:#ffd75e;}
+.gold-card .card-play:hover{background:#2a2008;border-color:#ffd75e;box-shadow:0 0 12px #ffd75e44;}
+.badge-gold{background:#2a2008;color:#ffd75e;border:1px solid #ffd75e;}
+/* gold password modal */
+#gold-modal{position:fixed;inset:0;background:rgba(4,2,10,0.85);display:none;align-items:center;justify-content:center;z-index:50;}
+#gold-modal.open{display:flex;}
+.gold-box{background:#120d02;border:2px solid #ffd75e;box-shadow:0 0 30px #ffd75e44;padding:2rem 2.4rem;text-align:center;max-width:340px;animation:goldIn .18s ease-out;}
+@keyframes goldIn{from{transform:scale(.92);opacity:0;}to{transform:scale(1);opacity:1;}}
+.gold-box .lock{font-size:2rem;}
+.gold-box h2{color:#ffd75e;font-family:'Share Tech Mono',monospace;font-size:.85rem;letter-spacing:.18em;margin:.8rem 0 1.1rem;}
+.gold-box input{width:100%;background:#0a0800;border:1px solid #8a6a1a;color:#ffe9a0;font-family:'Share Tech Mono',monospace;font-size:1rem;letter-spacing:.3em;text-align:center;padding:.55rem;outline:none;}
+.gold-box input:focus{border-color:#ffd75e;box-shadow:0 0 10px #ffd75e33;}
+.gold-box .gold-err{color:#ff7070;font-size:.65rem;letter-spacing:.1em;height:1em;margin-top:.5rem;font-family:'Share Tech Mono',monospace;}
+.gold-box .gold-btns{display:flex;gap:.6rem;margin-top:1rem;}
+.gold-box button{flex:1;background:#1a1402;border:1px solid #8a6a1a;color:#ffd75e;font-family:'Share Tech Mono',monospace;font-size:.7rem;letter-spacing:.15em;padding:.55rem 0;cursor:pointer;}
+.gold-box button:hover{border-color:#ffd75e;box-shadow:0 0 10px #ffd75e33;}
+.gold-box button.cancel{color:#8a7a4a;border-color:#3a2f10;}
+.gold-box.shake{animation:goldShake .3s;}
+@keyframes goldShake{0%,100%{transform:translateX(0);}25%{transform:translateX(-8px);}75%{transform:translateX(8px);}}
 
 /* Footer */
 .hub-footer{
@@ -173,13 +196,15 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
     <div class="logo-sub">// SELECT YOUR GAME //</div>
   </div>
 
-  <div class="cards">
+  
+  <!-- GOLDEN GAMES -->
+  <div class="section-label gold-label">★ // GOLDEN GAMES // ★</div>
+  <div class="cards" style="margin-top:0.8rem;">
 
-    <!-- DEADZONE -->
-    <div class="game-card" onclick="launch('deadzone')">
+<div class="game-card gold-card" onclick="goldLaunch('deadzone')">
       <div class="card-preview">
         <canvas class="card-canvas" id="cv-deadzone" width="210" height="132"></canvas>
-        <div class="card-badge badge-live">LIVE</div>
+        <div class="card-badge badge-gold">★ GOLD</div>
       </div>
       <div class="card-body">
         <div class="card-name">☣ DEADZONE</div>
@@ -193,11 +218,10 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
       </div>
     </div>
 
-    <!-- SHIFT -->
-    <div class="game-card" onclick="launch('shift')">
+<div class="game-card gold-card" onclick="goldLaunch('shift')">
       <div class="card-preview">
         <canvas class="card-canvas" id="cv-shift" width="210" height="132"></canvas>
-        <div class="card-badge badge-new">NEW</div>
+        <div class="card-badge badge-gold">★ GOLD</div>
       </div>
       <div class="card-body">
         <div class="card-name">◈ SHIFT</div>
@@ -210,6 +234,26 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
         <button class="card-play">▶ &nbsp;PLAY NOW</button>
       </div>
     </div>
+
+<div class="game-card gold-card" onclick="goldLaunch('cavefall')">
+      <div class="card-preview"><canvas class="card-canvas" id="cv-cf" width="190" height="132"></canvas><div class="card-badge badge-gold">★ GOLD</div></div>
+      <div class="card-body">
+        <div class="card-name">⛏ CAVEFALL</div>
+        <div class="card-desc">2D dig-and-build survival. Mine ores, craft torches, build a base, fight slimes at night.</div>
+        <div class="card-tags"><span class="tag">SANDBOX</span><span class="tag">SURVIVAL</span><span class="tag">CRAFT</span></div>
+        <button class="card-play">▶ &nbsp;PLAY NOW</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="cards">
+
+    <!-- DEADZONE -->
+    
+
+    <!-- SHIFT -->
+    
 
     <!-- DEPTH -->
     <div class="game-card" onclick="launch('depth')">
@@ -323,15 +367,7 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
       </div>
     </div>
 
-    <div class="game-card" onclick="launch('geodash')">
-      <div class="card-preview"><canvas class="card-canvas" id="cv-geo" width="190" height="132"></canvas><div class="card-badge badge-new">NEW</div></div>
-      <div class="card-body">
-        <div class="card-name">🟦 GEO DASH</div>
-        <div class="card-desc">Auto-runner rhythm game. Jump and fly through 3 levels. Cube mode and ship mode.</div>
-        <div class="card-tags"><span class="tag">RHYTHM</span><span class="tag">RUNNER</span><span class="tag">HARD</span></div>
-        <button class="card-play">▶ &nbsp;PLAY NOW</button>
-      </div>
-    </div>
+    
 
     <div class="game-card" onclick="launch('physics')">
       <div class="card-preview"><canvas class="card-canvas" id="cv-physics" width="190" height="132"></canvas><div class="card-badge badge-new">NEW</div></div>
@@ -342,6 +378,10 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
         <button class="card-play">▶ &nbsp;PLAY NOW</button>
       </div>
     </div>
+
+    
+
+    
 
     <div class="game-card" onclick="launch('connect4')">
       <div class="card-preview"><canvas class="card-canvas" id="cv-c4" width="190" height="132"></canvas></div>
@@ -562,14 +602,60 @@ const GAMES = {
   snake:'snake.html', tetris:'tetris.html',
   spaceinvaders:'spaceinvaders.html', pong:'pong.html',
   minesweeper:'minesweeper.html', frogger:'frogger.html',
-  connect4:'connect4.html', geodash:'geodash.html',
-  physics:'physics.html'
+  connect4:'connect4.html',
+  physics:'physics.html',
+  cavefall:'cavefall.html'
 };
 let currentGame = null;
 
 function launch(id){
   window.open(GAMES[id], '_blank');
 }
+
+// ── GOLDEN GAMES password gate ──
+const GOLD_PASS='jameson123';   // ← change the password here
+let goldUnlocked=false;
+let goldPending=null;
+function goldLaunch(id){
+  if(goldUnlocked){launch(id);return;}
+  goldPending=id;
+  document.getElementById('gold-err').textContent='';
+  document.getElementById('gold-pass').value='';
+  document.getElementById('gold-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('gold-pass').focus(),60);
+}
+function goldClose(){
+  document.getElementById('gold-modal').classList.remove('open');
+  goldPending=null;
+}
+function goldTry(){
+  const v=document.getElementById('gold-pass').value.trim();
+  if(v===GOLD_PASS){
+    goldUnlocked=true;
+    document.getElementById('gold-modal').classList.remove('open');
+    if(goldPending)launch(goldPending);
+    goldPending=null;
+  } else {
+    const box=document.getElementById('gold-box');
+    document.getElementById('gold-err').textContent='WRONG PASSWORD';
+    box.classList.remove('shake');void box.offsetWidth;
+    box.classList.add('shake');
+    document.getElementById('gold-pass').value='';
+    document.getElementById('gold-pass').focus();
+  }
+}
+(function goldInit(){
+  const gp=document.getElementById('gold-pass');
+  const gm=document.getElementById('gold-modal');
+  if(!gp||!gm){setTimeout(goldInit,40);return;}   // modal HTML sits below this script
+  gp.addEventListener('keydown',e=>{
+    if(e.key==='Enter')goldTry();
+    if(e.key==='Escape')goldClose();
+  });
+  gm.addEventListener('click',e=>{
+    if(e.target.id==='gold-modal')goldClose();
+  });
+})();
 
 function leaveGame(){ /* no-op — games open in their own tab */ }
 
@@ -705,6 +791,62 @@ window.addEventListener('keydown',e=>{
   animAll();
 })();
 
+// ── CAVEFALL PREVIEW ─────────────────────────────────────────
+(function(){
+  const cv=document.getElementById('cv-cf');if(!cv)return;
+  const c=cv.getContext('2d');const W=190,H=132;
+  let f=0;
+  const T=10;
+  function hh(x){return Math.floor(Math.sin(x*0.5)*1.6+Math.sin(x*0.23+2)*1.4)+6;}
+  (function frame(){
+    f++;
+    const night=Math.floor(f/240)%2===1;
+    c.fillStyle=night?'#1a1a3a':'#7ec0ee';c.fillRect(0,0,W,H);
+    c.fillStyle=night?'#e8e8ff':'#fff6c8';c.beginPath();c.arc(160,20,8,0,Math.PI*2);c.fill();
+    for(let gx=0;gx<19;gx++){
+      const h=hh(gx);
+      for(let gy=h;gy<13;gy++){
+        let col='#6b4a2a';
+        if(gy===h)col='#3f9e3a';
+        else if(gy>h+3)col='#7a7d82';
+        c.fillStyle=col;
+        c.fillRect(gx*T,gy*T+10,T,T);
+        // ore sparkle deep down
+        if(gy>h+4&&((gx*7+gy*13)%17===0)){c.fillStyle='#e8c14a';c.fillRect(gx*T+3,gy*T+13,3,3);}
+      }
+    }
+    if(night){c.fillStyle='rgba(4,6,20,0.45)';c.fillRect(0,10,W,H);}
+    // player
+    const px=90+Math.sin(f*0.02)*30, ph=hh(Math.floor(px/T));
+    const py=ph*T+10-16;
+    // glow
+    const g=c.createRadialGradient(px+3,py+8,2,px+3,py+8,34);
+    g.addColorStop(0,'rgba(255,220,140,0.35)');g.addColorStop(1,'rgba(0,0,0,0)');
+    c.fillStyle=g;c.fillRect(px-34,py-30,74,70);
+    c.fillStyle='#3a6ecf';c.fillRect(px,py+6,7,10);
+    c.fillStyle='#e8b88a';c.fillRect(px,py,7,6);
+    // slime hopping at night
+    if(night){
+      const sx=140-((f*0.6)%80);
+      const sy=hh(Math.floor(sx/T))*T+10-8+Math.abs(Math.sin(f*0.1))*-6;
+      c.fillStyle='#4fae4f';
+      c.beginPath();c.ellipse(sx,sy+4,7,5,0,0,Math.PI*2);c.fill();
+      c.fillStyle='#000';c.fillRect(sx-3,sy+1,2,2);c.fillRect(sx+1,sy+1,2,2);
+    }
+    // pick swing
+    c.save();c.translate(px+10,py+8);c.rotate(Math.sin(f*0.2)*0.7-0.4);
+    c.fillStyle='#8a6134';c.fillRect(-1,0,2,10);
+    c.fillStyle='#9aa4b0';c.fillRect(-5,-3,10,3);
+    c.restore();
+    c.fillStyle='rgba(0,0,0,0.55)';c.fillRect(0,H-14,W,14);
+    c.fillStyle='#d8b060';c.font='7px monospace';c.textAlign='center';
+    c.fillText('⛏ DIG • BUILD • SURVIVE',W/2,H-4);
+    requestAnimationFrame(frame);
+  })();
+})();
+
+
+
 // ── PHYSICS PREVIEW ──────────────────────────────────────────
 (function(){
   const cv=document.getElementById('cv-physics');if(!cv)return;
@@ -779,48 +921,7 @@ window.addEventListener('keydown',e=>{
   })();
 })();
 
-// ── GEODASH PREVIEW (separate loop) ─────────────────────────
-(function(){
-  const cv=document.getElementById('cv-geo');if(!cv)return;
-  const c=cv.getContext('2d');const W=190,H=132;
-  let f=0;
-  (function frame(){
-    f++;
-    const g=c.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#0a0020');g.addColorStop(1,'#001040');
-    c.fillStyle=g;c.fillRect(0,0,W,H);
-    for(let i=0;i<5;i++){const y=((f*.8+i*30)%H);c.strokeStyle='rgba(68,136,255,0.06)';c.lineWidth=1;c.beginPath();c.moveTo(0,y);c.lineTo(W,y);c.stroke();}
-    const GY=H-28;
-    c.fillStyle='#1a1a1a';c.fillRect(0,GY,W,H-GY);
-    c.fillStyle='#2a2a2a';c.fillRect(0,GY,W,4);
-    c.strokeStyle='rgba(255,255,255,0.04)';c.lineWidth=1;
-    for(let x=(-(f*3)%20);x<W;x+=20){c.beginPath();c.moveTo(x,GY);c.lineTo(x,H);c.stroke();}
-    const scroll=f*3;
-    [{type:'spike',x:200-scroll%300,y:GY-20},{type:'block',x:280-scroll%300,y:GY-20},
-     {type:'spike',x:320-scroll%300,y:GY-20},{type:'orb',x:240-scroll%300,y:GY-50}]
-    .forEach(o=>{
-      if(o.x<-20||o.x>W+20)return;
-      if(o.type==='spike'){c.fillStyle='#ff2200';c.shadowBlur=4;c.shadowColor='#ff2200';c.beginPath();c.moveTo(o.x,o.y+20);c.lineTo(o.x+10,o.y);c.lineTo(o.x+20,o.y+20);c.closePath();c.fill();}
-      else if(o.type==='block'){c.fillStyle='#4488ff';c.shadowBlur=4;c.shadowColor='#4488ff';c.fillRect(o.x,o.y,20,20);c.fillStyle='rgba(255,255,255,0.2)';c.fillRect(o.x,o.y,20,5);}
-      else if(o.type==='orb'){const p=0.7+Math.sin(f*.15)*.3;c.fillStyle='#ffee00';c.shadowBlur=10*p;c.shadowColor='#ffee00';c.globalAlpha=p;c.beginPath();c.arc(o.x+8,o.y,8,0,Math.PI*2);c.fill();c.globalAlpha=1;}
-      c.shadowBlur=0;
-    });
-    const py=GY-20+Math.sin(f*.12)*18;
-    c.save();c.translate(45,py+10);c.rotate(f*.08);
-    c.shadowBlur=12;c.shadowColor='#4488ff';c.fillStyle='#4488ff';c.fillRect(-10,-10,20,20);
-    c.fillStyle='rgba(255,255,255,0.2)';c.fillRect(-10,-10,20,10);
-    c.fillStyle='rgba(0,0,0,0.3)';c.fillRect(-4,-4,8,8);
-    c.strokeStyle='rgba(255,255,255,0.4)';c.lineWidth=1;c.strokeRect(-4,-4,8,8);
-    c.shadowBlur=0;c.restore();
-    for(let t=1;t<=5;t++){c.save();c.globalAlpha=0.15*(1-t/5);c.fillStyle='#4488ff';const ts=14*(1-t/6);c.fillRect(45-t*7,py+10-ts/2,ts,ts);c.restore();}
-    c.fillStyle='rgba(0,0,0,0.5)';c.fillRect(0,0,W,10);
-    const prog=(f%200)/200;
-    c.fillStyle='#4488ff';c.shadowBlur=4;c.shadowColor='#4488ff';c.fillRect(0,1,W*prog,7);c.shadowBlur=0;
-    c.fillStyle='rgba(255,255,255,0.4)';c.font='5px monospace';c.textAlign='right';c.fillText(Math.floor(prog*100)+'%',W-2,8);
-    c.fillStyle='rgba(255,255,255,0.2)';c.textAlign='left';c.fillText('STEREO MADNESS',3,8);
-    requestAnimationFrame(frame);
-  })();
-})();
+
 previewShift();
 previewDepth();
 (function previewSumo(){
@@ -878,5 +979,18 @@ previewDepth();
   })();
 })();
 </script>
+
+<div id="gold-modal">
+  <div class="gold-box" id="gold-box">
+    <div class="lock">🔒</div>
+    <h2>ASK JAMESON FOR PASSWORD</h2>
+    <input id="gold-pass" type="password" placeholder="PASSCODE" maxlength="24" autocomplete="off">
+    <div class="gold-err" id="gold-err"></div>
+    <div class="gold-btns">
+      <button class="cancel" onclick="goldClose()">CANCEL</button>
+      <button onclick="goldTry()">UNLOCK</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
