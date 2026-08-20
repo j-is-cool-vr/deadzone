@@ -255,6 +255,20 @@ body{display:flex;flex-direction:column;align-items:center;font-family:'Share Te
     <!-- SHIFT -->
     
 
+    <!-- SIEGE -->
+    <div class="game-card" onclick="launch('siege')">
+      <div class="card-preview">
+        <canvas class="card-canvas" id="cv-siege" width="210" height="132"></canvas>
+        <div class="card-badge">NEW</div>
+      </div>
+      <div class="card-body">
+        <div class="card-name">🏰 SIEGE</div>
+        <div class="card-desc">Tower defense. Build gunners, cannons, frost &amp; tesla towers. Survive 30 waves.</div>
+        <div class="card-tags"><span class="tag">STRATEGY</span><span class="tag">TOWER DEFENSE</span><span class="tag">WAVES</span></div>
+        <button class="card-play">▶ PLAY NOW</button>
+      </div>
+    </div>
+
     <!-- DEPTH -->
     <div class="game-card" onclick="launch('depth')">
       <div class="card-preview">
@@ -604,7 +618,8 @@ const GAMES = {
   minesweeper:'minesweeper.html', frogger:'frogger.html',
   connect4:'connect4.html',
   physics:'physics.html',
-  cavefall:'cavefall.html'
+  cavefall:'cavefall.html',
+  siege:'siege.html'
 };
 let currentGame = null;
 
@@ -613,7 +628,7 @@ function launch(id){
 }
 
 // ── GOLDEN GAMES password gate ──
-const GOLD_PASS='jameson123';   // ← change the password here
+const GOLD_PASS='jameson is cool';   // ← change the password here (capitals don't matter)
 let goldUnlocked=false;
 let goldPending=null;
 function goldLaunch(id){
@@ -629,7 +644,7 @@ function goldClose(){
   goldPending=null;
 }
 function goldTry(){
-  const v=document.getElementById('gold-pass').value.trim();
+  const v=document.getElementById('gold-pass').value.trim().toLowerCase();
   if(v===GOLD_PASS){
     goldUnlocked=true;
     document.getElementById('gold-modal').classList.remove('open');
@@ -658,6 +673,63 @@ function goldTry(){
 })();
 
 function leaveGame(){ /* no-op — games open in their own tab */ }
+
+// ── SIEGE PREVIEW ──
+(function(){
+  const cv=document.getElementById('cv-siege');
+  if(!cv)return;
+  const c=cv.getContext('2d');
+  const pw=210,ph=132;
+  const path=[[0,30],[60,30],[60,95],[140,95],[140,45],[210,45]];
+  let segs=[],len=0;
+  for(let i=0;i<path.length-1;i++){const [x1,y1]=path[i],[x2,y2]=path[i+1];
+    const l=Math.hypot(x2-x1,y2-y1);segs.push({x1,y1,x2,y2,l,s:len});len+=l;}
+  function pos(d){d=((d%len)+len)%len;
+    for(const s of segs){if(d<=s.s+s.l){const t=(d-s.s)/s.l;
+      return[s.x1+(s.x2-s.x1)*t,s.y1+(s.y2-s.y1)*t];}}
+    return[210,45];}
+  const tws=[[92,62,'#b8b0ff'],[36,66,'#ff9a52'],[168,80,'#ffe95a']];
+  let f=0;
+  function frame(){
+    f++;
+    c.fillStyle='#0a0714';c.fillRect(0,0,pw,ph);
+    // path
+    c.strokeStyle='rgba(140,80,255,0.25)';c.lineWidth=14;c.lineCap='round';c.lineJoin='round';
+    c.beginPath();path.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();
+    c.strokeStyle='rgba(160,100,255,0.5)';c.lineWidth=1.5;c.stroke();
+    // enemies
+    const eps=[];
+    for(let k=0;k<4;k++){
+      const [ex,ey]=pos(f*0.9+k*55);
+      eps.push([ex,ey]);
+      c.fillStyle=['#c05aff','#5affd0','#ff5a5a','#ffd05a'][k];
+      c.beginPath();c.arc(ex,ey,k===2?7:5,0,Math.PI*2);c.fill();
+    }
+    // towers fire at nearest enemy
+    tws.forEach(([tx,ty,col],ti)=>{
+      c.fillStyle='#1c1430';c.fillRect(tx-8,ty-8,16,16);
+      c.strokeStyle=col;c.lineWidth=1;c.strokeRect(tx-8,ty-8,16,16);
+      let best=null,bd=52;
+      eps.forEach(([ex,ey])=>{const d=Math.hypot(ex-tx,ey-ty);if(d<bd){bd=d;best=[ex,ey];}});
+      if(best){
+        const a=Math.atan2(best[1]-ty,best[0]-tx);
+        c.save();c.translate(tx,ty);c.rotate(a);
+        c.fillStyle=col;c.fillRect(0,-2,10,4);c.restore();
+        if((f+ti*7)%14<4){
+          c.strokeStyle=col;c.lineWidth=1;
+          c.beginPath();c.moveTo(tx,ty);c.lineTo(best[0],best[1]);c.stroke();
+        }
+      } else {
+        c.fillStyle=col;c.fillRect(tx-5,ty-2,10,4);
+      }
+    });
+    c.fillStyle='rgba(224,184,255,0.8)';
+    c.font='bold 9px monospace';c.textAlign='center';
+    c.fillText('S I E G E',pw/2,14);
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
 
 // ── DEPTH PREVIEW ────────────────────────────────────────────
 function previewDepth(){
